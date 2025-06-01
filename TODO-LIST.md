@@ -6,65 +6,65 @@ This document outlines the specific tasks required to implement the first phase 
 
 ### 1. Core Store Setup
 
-- [x] Create `src/stores/index.ts` as the main store entry point
-- [x] Define normalized state interfaces in `src/types/store.ts`
-- [x] Implement base store with middleware (devtools, persist) in `src/stores/appStore.ts`
-- [x] Create utility functions for state normalization in `src/lib/utils/normalization.ts`
+- [] Create `src/stores/index.ts` as the main store entry point
+- [] Define normalized state interfaces in `src/types/store.ts`
+- [] Implement base store with middleware (devtools, persist) in `src/stores/appStore.ts`
+- [] Create utility functions for state normalization in `src/lib/utils/normalization.ts`
 
 ### 2. Store Slices Implementation
 
-- [x] **Auth Slice**
-  - [x] Create `src/stores/slices/authSlice.ts`
-  - [x] Implement authentication state management
-  - [x] Add support for temporary API key storage
-  - [x] Create migration path from unauthenticated to authenticated
+- [] **Auth Slice**
+  - [] Create `src/stores/slices/authSlice.ts`
+  - [] Implement authentication state management
+  - [] Add support for temporary API key storage
+  - [] Create migration path from unauthenticated to authenticated
 
-- [x] **Synths Slice**
-  - [x] Create `src/stores/slices/synthsSlice.ts`
-  - [x] Implement normalized synth state management
-  - [x] Add CRUD operations for synths
-  - [x] Handle loading states and optimistic updates
+- [] **Synths Slice**
+  - [] Create `src/stores/slices/synthsSlice.ts`
+  - [] Implement normalized synth state management
+  - [] Add CRUD operations for synths
+  - [] Handle loading states and optimistic updates
 
-- [x] **Teams Slice**
-  - [x] Create `src/stores/slices/teamsSlice.ts`
-  - [x] Implement normalized team state management
-  - [x] Add team-synth relationship tracking
-  - [x] Add CRUD operations for teams
+- [] **Teams Slice**
+  - [] Create `src/stores/slices/teamsSlice.ts`
+  - [] Implement normalized team state management
+  - [] Add team-synth relationship tracking
+  - [] Add CRUD operations for teams
 
-- [x] **Threads Slice**
-  - [x] Create `src/stores/slices/threadsSlice.ts`
-  - [x] Implement normalized thread state management
-  - [x] Add active thread selection logic
-  - [x] Add thread loading states
+- [] **Threads Slice**
+  - [] Create `src/stores/slices/threadsSlice.ts`
+  - [] Implement normalized thread state management
+  - [] Add active thread selection logic
+  - [] Add thread loading states
 
-- [x] **Messages Slice**
-  - [x] Create `src/stores/slices/messagesSlice.ts`
-  - [x] Implement normalized message state management
-  - [x] Add message pagination support
-  - [x] Handle streaming message updates
+- [] **Messages Slice**
+  - [] Create `src/stores/slices/messagesSlice.ts`
+  - [] Implement normalized message state management
+  - [] Add message pagination support
+  - [] Handle streaming message updates
 
 ### 3. Service Layer Development
 
-- [x] Create `src/lib/services/dataService.ts` as base service interface
-- [x] ~~Implement `src/lib/services/supabaseService.ts` for authenticated operations~~ (Integrated directly into slices)
-- [x] Implement `src/lib/services/directService.ts` for unauthenticated API operations
-- [x] Create request caching mechanism in `src/lib/services/cacheService.ts`
+- [] Create `src/lib/services/dataService.ts` as base service interface
+- [] ~~Implement `src/lib/services/supabaseService.ts` for authenticated operations~~ (Integrated directly into slices)
+- [] Implement `src/lib/services/directService.ts` for unauthenticated API operations
+- [] Create request caching mechanism in `src/lib/services/cacheService.ts`
 
 ### 4. Custom Hooks Creation
 
-- [x] Create `src/hooks/store/useAuth.ts` to replace current auth context
-- [x] Create `src/hooks/store/useApiKey.ts` with same API as current apiKeyContext
-- [x] Create `src/hooks/store/useSynths.ts` with the same API as current useSynths
-- [x] Create `src/hooks/store/useTeams.ts` with the same API as current useTeams
-- [x] Create `src/hooks/store/useThreads.ts` for thread management
-- [x] Create `src/hooks/store/useThreadSynths.ts` to replace current useThreadSynths
-- [x] Create `src/hooks/store/useMessages.ts` for message management
+- [] Create `src/hooks/store/useAuth.ts` to replace current auth context
+- [] Create `src/hooks/store/useApiKey.ts` with same API as current apiKeyContext
+- [] Create `src/hooks/store/useSynths.ts` with the same API as current useSynths
+- [] Create `src/hooks/store/useTeams.ts` with the same API as current useTeams
+- [] Create `src/hooks/store/useThreads.ts` for thread management
+- [] Create `src/hooks/store/useThreadSynths.ts` to replace current useThreadSynths
+- [] Create `src/hooks/store/useMessages.ts` for message management
 
 ### 5. Component Migration
 
-- [x] **Core Components**
-  - [x] Update `src/lib/auth.tsx` to use Zustand auth store
-  - [x] Update `src/lib/apiKeyContext.tsx` to use Zustand store
+- [] **Core Components**
+  - [] Update `src/lib/auth.tsx` to use Zustand auth store
+  - [] Update `src/lib/apiKeyContext.tsx` to use Zustand store
 
 - [ ] **Layout Components**
   - [ ] Refactor `src/components/layout/Layout.tsx` to use new hooks
