@@ -1,0 +1,717 @@
+import React, { useState, useEffect } from 'react';
+import { Users, Bot, FileText, Plus, PanelLeftClose } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import EmployeeCard from './EmployeeCard';
+import CustomSynthCard from './CustomSynthCard';
+import LoadingSynthCard from './LoadingSynthCard';
+import LoadingTeamCard from './LoadingTeamCard';
+import TeamCard from './TeamCard';
+import CustomTeamCard from './CustomTeamCard';
+import FilesSection from './FilesSection';
+import CreateSynthModal from './CreateSynthModal';
+import EditSynthModal from './EditSynthModal';
+import CreateTeamModal, { CustomTeam } from './CreateTeamModal';
+import { AIEmployee } from '@/types';
+import { PremadeTeam, premadeTeams } from '@/data/premadeTeams';
+import { generateAISynth, generateAITeam, generateSynthImage } from '@/lib/api-utils';
+
+interface BrowserPanelProps {
+  employees: AIEmployee[];
+  customSynths: AIEmployee[];
+  onSelectEmployee: (employee: AIEmployee) => void;
+  onQuickAdd: (employee: AIEmployee) => void;
+  onQuickAddTeam: (employees: AIEmployee[]) => void;
+  onSelectTeam: (team: PremadeTeam) => void;
+  onSelectCustomTeam: (team: CustomTeam) => void;
+  onAddNewSynth: (synth: AIEmployee) => void;
+  onEditSynth: (synth: AIEmployee) => void;
+  onDeleteSynth: (synthId: string) => void;
+  onAddNewTeam: (team: CustomTeam) => void;
+
+  customTeams: CustomTeam[];
+  onToggleCollapse: () => void;
+}
+
+const BrowserPanel: React.FC<BrowserPanelProps> = ({
+  employees,
+  customSynths = [],
+  onSelectEmployee,
+  onQuickAdd,
+  onQuickAddTeam,
+  onSelectTeam,
+  onSelectCustomTeam,
+  onAddNewSynth,
+  onEditSynth,
+  onDeleteSynth,
+  onAddNewTeam,
+  customTeams = [],
+  onToggleCollapse,
+}) => {
+  const [activeTab, setActiveTab] = useState('teams');
+  const [isCreateSynthModalOpen, setIsCreateSynthModalOpen] = useState(false);
+  const [isEditSynthModalOpen, setIsEditSynthModalOpen] = useState(false);
+  const [isCreateTeamModalOpen, setIsCreateTeamModalOpen] = useState(false);
+  const [editingSynth, setEditingSynth] = useState<AIEmployee | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [synthToDelete, setSynthToDelete] = useState<AIEmployee | null>(null);
+  
+  // Loading synths state
+  interface LoadingSynth {
+    id: string;
+    keywords: string;
+    baseModel: string;
+    averageAge: number;
+    startTime: number;
+  }
+  const [loadingSynths, setLoadingSynths] = useState<LoadingSynth[]>([]);
+
+  // Loading teams state
+  interface LoadingTeam {
+    id: string;
+    keywords: string;
+    teamSize: number;
+    includeExistingSynths: boolean;
+    teamType: string;
+    averageAge: number;
+    existingSynths?: any[];
+    startTime: number;
+  }
+  const [loadingTeams, setLoadingTeams] = useState<LoadingTeam[]>([]);
+
+  // Interface for loading synths that are part of teams
+  interface LoadingTeamSynth {
+    id: string;
+    teamId: string;
+    name: string;
+    role: string;
+    profileImage: string; // Placeholder while loading
+    startTime: number;
+  }
+  const [loadingTeamSynths, setLoadingTeamSynths] = useState<LoadingTeamSynth[]>([]);
+
+  // Interface for team generation
+  interface GeneratedTeamMember {
+    name: string;
+    age: number;
+    role: string;
+    systemPrompt: string;
+    baseModel: string;
+    profileImage: string;
+    bio?: string;
+    experience?: string[];
+    isExisting?: boolean;
+    existingId?: string;
+    isLoadingImage?: boolean;
+  }
+
+  // Track synths currently having images generated (to avoid duplicates)
+  const [generatingImages, setGeneratingImages] = useState<Set<string>>(new Set());
+
+  const handleCreateSynth = () => {
+    setIsCreateSynthModalOpen(true);
+  };
+
+  const handleCreateTeam = () => {
+    setIsCreateTeamModalOpen(true);
+  };
+
+  const handleSaveSynth = (newSynth: AIEmployee) => {
+    onAddNewSynth(newSynth);
+    setIsCreateSynthModalOpen(false);
+  };
+
+  const handleEditSynth = (synth: AIEmployee) => {
+    setEditingSynth(synth);
+    setIsEditSynthModalOpen(true);
+  };
+
+  const handleSaveEditedSynth = (updatedSynth: AIEmployee) => {
+    onEditSynth(updatedSynth);
+    setIsEditSynthModalOpen(false);
+    setEditingSynth(null);
+  };
+
+  const handleDeleteSynth = (synthId: string) => {
+    const synth = customSynths.find(s => s.id === synthId);
+    if (synth) {
+      setSynthToDelete(synth);
+      setDeleteDialogOpen(true);
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    if (synthToDelete) {
+      onDeleteSynth(synthToDelete.id);
+      setDeleteDialogOpen(false);
+      setSynthToDelete(null);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setDeleteDialogOpen(false);
+    setSynthToDelete(null);
+  };
+
+  const handleSaveTeam = (newTeam: CustomTeam) => {
+    onAddNewTeam(newTeam);
+    setIsCreateTeamModalOpen(false);
+  };
+
+  const handleQuickAddCustomTeam = (team: CustomTeam) => {
+    onQuickAddTeam(team.selectedSynths);
+  };
+
+  const handleGenerationStart = (generationData: { keywords: string; baseModel: string; averageAge: number; }) => {
+    console.log('🚀 Generation started with data:', generationData);
+    
+    const loadingId = `loading-${Date.now()}`;
+    const newLoadingSynth: LoadingSynth = {
+      id: loadingId,
+      keywords: generationData.keywords,
+      baseModel: generationData.baseModel,
+      averageAge: generationData.averageAge,
+      startTime: Date.now(),
+    };
+    
+    console.log('🔄 Adding loading synth:', newLoadingSynth);
+    
+    setLoadingSynths(prev => {
+      const updated = [...prev, newLoadingSynth];
+      console.log('📊 Updated loading synths:', updated);
+      return updated;
+    });
+    
+    // Switch to synths tab if not already active
+    setActiveTab('synths');
+    console.log('🔄 Switched to synths tab');
+    
+    // Start the generation process asynchronously
+    console.log('🚀 Starting async generation process');
+    generateSynth(newLoadingSynth);
+  };
+
+  const generateSynth = async (loadingSynth: LoadingSynth) => {
+    console.log('🔄 Starting synth generation for:', loadingSynth.keywords);
+    
+    try {
+      // Step 1: Get synth data quickly (without real image)
+      const generatedSynthData = await generateAISynth({
+        keywords: loadingSynth.keywords,
+        baseModel: loadingSynth.baseModel,
+        averageAge: loadingSynth.averageAge,
+      });
+
+      console.log('✅ AI Synth data received:', generatedSynthData);
+
+      // Create the new synth with placeholder image
+      const newSynth: AIEmployee = {
+        id: `synth-${Date.now()}`,
+        name: generatedSynthData.name,
+        age: generatedSynthData.age,
+        role: generatedSynthData.role,
+        systemPrompt: generatedSynthData.systemPrompt,
+        baseModel: generatedSynthData.baseModel as AIEmployee['baseModel'],
+        profileImage: generatedSynthData.profileImage, // This is now a placeholder
+        bio: generatedSynthData.bio,
+        experience: generatedSynthData.experience,
+        isLoadingImage: true, // Set to true - useEffect will handle background image generation
+      };
+
+      console.log('📝 Created synth object:', newSynth);
+
+      // Remove loading synth first, then add real synth
+      setLoadingSynths(prev => {
+        console.log('🗑️ Removing loading synth:', loadingSynth.id);
+        return prev.filter(ls => ls.id !== loadingSynth.id);
+      });
+      
+      // Add the new synth immediately with placeholder image
+      console.log('➕ Adding new synth to parent (with placeholder image)');
+      onAddNewSynth(newSynth);
+      
+      console.log('✅ AI Synth creation completed (fast path) - background image will be generated automatically');
+      
+    } catch (error) {
+      console.error('❌ Error generating AI synth:', error);
+      
+      // Remove loading synth on error
+      setLoadingSynths(prev => {
+        console.log('🗑️ Removing loading synth due to error:', loadingSynth.id);
+        return prev.filter(ls => ls.id !== loadingSynth.id);
+      });
+      
+      alert(`Failed to generate synth: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleCancelGeneration = (loadingId: string) => {
+    setLoadingSynths(prev => prev.filter(ls => ls.id !== loadingId));
+  };
+
+  const handleTeamGenerationStart = (generationData: { keywords: string; teamSize: number; includeExistingSynths: boolean; teamType: string; averageAge: number; existingSynths?: any[]; }) => {
+    console.log('🚀 Team generation started with data:', generationData);
+    
+    const loadingId = `loading-team-${Date.now()}`;
+    const newLoadingTeam: LoadingTeam = {
+      id: loadingId,
+      keywords: generationData.keywords,
+      teamSize: generationData.teamSize,
+      includeExistingSynths: generationData.includeExistingSynths,
+      teamType: generationData.teamType,
+      averageAge: generationData.averageAge,
+      existingSynths: generationData.existingSynths,
+      startTime: Date.now(),
+    };
+    
+    console.log('🔄 Adding loading team:', newLoadingTeam);
+    
+    setLoadingTeams(prev => {
+      const updated = [...prev, newLoadingTeam];
+      console.log('📊 Updated loading teams:', updated);
+      return updated;
+    });
+    
+    // Switch to teams tab if not already active
+    setActiveTab('teams');
+    console.log('🔄 Switched to teams tab');
+    
+    // Start the generation process asynchronously
+    console.log('🚀 Starting async team generation process');
+    generateTeam(newLoadingTeam);
+  };
+
+  const generateTeam = async (loadingTeam: LoadingTeam) => {
+    console.log('🔄 Starting team generation for:', loadingTeam.keywords);
+    
+    try {
+      const generatedTeamData = await generateAITeam({
+        keywords: loadingTeam.keywords,
+        teamSize: loadingTeam.teamSize,
+        useExistingSynths: loadingTeam.includeExistingSynths,
+        existingSynths: loadingTeam.existingSynths || [],
+        baseModel: 'gpt-4o',
+        teamType: loadingTeam.teamType as 'team' | 'group',
+        averageAge: loadingTeam.averageAge,
+      });
+
+      console.log('✅ AI Team data received:', generatedTeamData);
+
+      // Create loading synth cards for team members (all members since images will be generated)
+      const teamCreationTimestamp = Date.now();
+      const teamId = `ai-team-${teamCreationTimestamp}`;
+      
+      const newLoadingTeamSynths: LoadingTeamSynth[] = generatedTeamData.members
+        .filter((member: GeneratedTeamMember) => !member.isExisting) // Only new members need image generation
+        .map((member: GeneratedTeamMember, index: number) => ({
+          id: `loading-team-synth-${teamCreationTimestamp}-${index}`,
+          teamId: teamId,
+          name: member.name,
+          role: member.role,
+          profileImage: member.profileImage, // Placeholder image
+          startTime: teamCreationTimestamp,
+        }));
+      
+      if (newLoadingTeamSynths.length > 0) {
+        setLoadingTeamSynths(prev => [...prev, ...newLoadingTeamSynths]);
+        console.log('🔄 Added loading team synths:', newLoadingTeamSynths);
+      }
+
+      // Convert generated team members to AIEmployee format
+      const teamSynths: AIEmployee[] = generatedTeamData.members.map((member: GeneratedTeamMember, index: number) => {
+        if (member.isExisting && member.existingId) {
+          // Find the existing synth
+          const existingSynth = [...employees, ...customSynths].find(s => s.id === member.existingId);
+          return existingSynth || {
+            id: member.existingId,
+            name: member.name,
+            age: member.age,
+            role: member.role,
+            systemPrompt: member.systemPrompt,
+            baseModel: member.baseModel as AIEmployee['baseModel'],
+            profileImage: member.profileImage || '/images/default-avatar.png',
+            bio: member.bio,
+            experience: member.experience,
+          };
+        } else {
+          // For new synths, we'll need to let the parent component handle ID generation
+          // Use a temporary marker that will be replaced when saved to database
+          return {
+            id: `temp-synth-${Date.now()}-${index}`,
+            name: member.name,
+            age: member.age,
+            role: member.role,
+            systemPrompt: member.systemPrompt,
+            baseModel: member.baseModel as AIEmployee['baseModel'],
+            profileImage: member.profileImage,
+            bio: member.bio,
+            experience: member.experience,
+          };
+        }
+      });
+
+      const newTeam: CustomTeam = {
+        id: teamId, // Use the same teamId created above
+        name: generatedTeamData.name,
+        description: generatedTeamData.description,
+        selectedSynths: teamSynths,
+        teamImage: generatedTeamData.teamImage,
+        originalKeywords: loadingTeam.keywords, // Store the original keywords for image generation
+      } as CustomTeam & { originalKeywords: string };
+
+      console.log('📝 Created team object:', newTeam);
+
+      // Remove loading team first, then add real team
+      setLoadingTeams(prev => {
+        console.log('🗑️ Removing loading team:', loadingTeam.id);
+        return prev.filter(lt => lt.id !== loadingTeam.id);
+      });
+      
+      // Clean up loading team synths for this team before adding the real team
+      setLoadingTeamSynths(prev => {
+        const filtered = prev.filter(lts => lts.teamId !== teamId);
+        console.log('🧹 Cleaning up loading team synths for team:', teamId, 'removed:', prev.length - filtered.length);
+        return filtered;
+      });
+      
+      // Add the new team
+      console.log('➕ Adding new team to parent');
+      onAddNewTeam(newTeam);
+      
+      console.log('✅ AI Team generation completed successfully - images will be generated after Supabase save');
+      
+    } catch (error) {
+      console.error('❌ Error generating AI team:', error);
+      
+      // Remove loading team on error
+      setLoadingTeams(prev => {
+        console.log('🗑️ Removing loading team due to error:', loadingTeam.id);
+        return prev.filter(lt => lt.id !== loadingTeam.id);
+      });
+      
+      alert(`Failed to generate team: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleCancelTeamGeneration = (loadingId: string) => {
+    setLoadingTeams(prev => prev.filter(lt => lt.id !== loadingId));
+  };
+
+
+
+  // Get all available synths for team creation (both premade and custom)
+  const allAvailableSynths = [...employees, ...customSynths];
+
+  // Effect to handle background image generation for synths with isLoadingImage = true
+  useEffect(() => {
+    const synthsNeedingImages = customSynths.filter(synth => synth.isLoadingImage);
+    
+    synthsNeedingImages.forEach(async (synth) => {
+      // Check if we're already processing this synth
+      const synthKey = `${synth.name}-${synth.role}`;
+      
+      if (!generatingImages.has(synthKey)) {
+        console.log('🎨 Starting background image generation for saved synth:', synth.name);
+        
+        // Mark as generating
+        setGeneratingImages(prev => new Set([...prev, synthKey]));
+        
+        try {
+          const realProfileImage = await generateSynthImage({
+            name: synth.name,
+            age: synth.age,
+            role: synth.role,
+            bio: synth.bio,
+            systemPrompt: synth.systemPrompt,
+            baseModel: synth.baseModel,
+            profileImage: synth.profileImage, // Current placeholder
+          });
+          
+          // Update the synth with the real image
+          const updatedSynth: AIEmployee = {
+            ...synth,
+            profileImage: realProfileImage,
+            isLoadingImage: false,
+          };
+          
+          console.log('✅ Background image completed for:', synth.name);
+          onEditSynth(updatedSynth);
+          
+        } catch (imageError) {
+          console.error('⚠️ Background image generation failed for:', synth.name, imageError);
+          
+          // Remove loading state even if image generation failed
+          const updatedSynth: AIEmployee = {
+            ...synth,
+            isLoadingImage: false,
+          };
+          onEditSynth(updatedSynth);
+        } finally {
+          // Remove from generating set
+          setGeneratingImages(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(synthKey);
+            return newSet;
+          });
+        }
+      }
+    });
+  }, [customSynths, generatingImages, onEditSynth]);
+
+  return (
+    <div className="h-full flex flex-col bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+        {/* Tab Navigation */}
+        <div className="p-3 border-b border-neutral-200 dark:border-neutral-800">
+          <div className="flex items-center justify-between mb-3">
+            <TabsList className="grid grid-cols-3 flex-1">
+              <TabsTrigger value="teams" className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline">Teams</span>
+              </TabsTrigger>
+              <TabsTrigger value="synths" className="flex items-center gap-2">
+                <Bot className="h-4 w-4" />
+                <span className="hidden sm:inline">Synths</span>
+              </TabsTrigger>
+              <TabsTrigger value="files" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">Files</span>
+              </TabsTrigger>
+            </TabsList>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onToggleCollapse}
+              className="ml-2 h-6 w-6 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+              title="Hide browser (⌘+B)"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        <div className="flex-1 overflow-hidden">
+          <TabsContent value="teams" className="h-full m-0">
+            <ScrollArea className="h-full">
+              <div className="p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex text-xs text-neutral-500 dark:text-neutral-400 items-center gap-1">
+                    <span>💡</span>
+                    <span>Drag teams to the chat</span>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="flex items-center gap-2"
+                    onClick={handleCreateTeam}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Create new team
+                  </Button>
+                </div>
+
+                {/* Custom Teams Section */}
+                {(customTeams && customTeams.length > 0) || loadingTeams.length > 0 ? (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Your Custom Teams ({customTeams.length + loadingTeams.length})
+                    </h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+                      {/* Loading teams */}
+                      {loadingTeams.map((loadingTeam) => (
+                        <LoadingTeamCard
+                          key={loadingTeam.id}
+                          prompt={`Creating ${loadingTeam.keywords} team...`}
+                          onCancel={() => handleCancelTeamGeneration(loadingTeam.id)}
+                        />
+                      ))}
+                      
+                      {/* Existing custom teams */}
+                      {customTeams.map((team) => (
+                        <CustomTeamCard
+                          key={team.id}
+                          team={team}
+                          onClick={onSelectCustomTeam}
+                          onQuickAdd={handleQuickAddCustomTeam}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Premade Teams Section */}
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Premade Teams ({premadeTeams.length})
+                  </h3>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {premadeTeams.map((team) => (
+                      <TeamCard
+                        key={team.id}
+                        team={team}
+                        allEmployees={allAvailableSynths}
+                        onClick={onSelectTeam}
+                        onQuickAdd={onQuickAddTeam}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="synths" className="h-full m-0">
+            <ScrollArea className="h-full">
+              <div className="p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex text-xs text-neutral-500 dark:text-neutral-400 items-center gap-1">
+                    <span>💡</span>
+                    <span>Drag individual synths to the chat</span>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="flex items-center gap-2"
+                    onClick={handleCreateSynth}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Create new synth
+                  </Button>
+                </div>
+
+                {/* Custom Synths Section */}
+                {(customSynths && customSynths.length > 0) || loadingSynths.length > 0 || loadingTeamSynths.length > 0 ? (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
+                      <Bot className="h-4 w-4" />
+                      Your Custom Synths ({customSynths.length + loadingSynths.length + loadingTeamSynths.length})
+                    </h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2 mb-4">
+                      {/* Loading synths */}
+                      {loadingSynths.map((loadingSynth) => (
+                        <LoadingSynthCard
+                          key={loadingSynth.id}
+                          synthName={`AI Synth`}
+                          synthRole={`${loadingSynth.keywords} specialist`}
+                          onCancel={() => handleCancelGeneration(loadingSynth.id)}
+                        />
+                      ))}
+                      
+                      {/* Loading team synths */}
+                      {loadingTeamSynths.map((loadingTeamSynth) => (
+                        <LoadingSynthCard
+                          key={loadingTeamSynth.id}
+                          synthName={loadingTeamSynth.name}
+                          synthRole={loadingTeamSynth.role}
+                          profileImage={loadingTeamSynth.profileImage}
+                          onCancel={() => {
+                            setLoadingTeamSynths(prev => prev.filter(lts => lts.id !== loadingTeamSynth.id));
+                          }}
+                        />
+                      ))}
+                      
+                      {/* Existing custom synths */}
+                      {customSynths.map((synth) => (
+                        <CustomSynthCard
+                          key={synth.id}
+                          employee={synth}
+                          onClick={onSelectEmployee}
+                          onQuickAdd={onQuickAdd}
+                          onEdit={handleEditSynth}
+                          onDelete={handleDeleteSynth}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Premade Synths Section */}
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
+                    <Bot className="h-4 w-4" />
+                    Premade Synths ({employees.length})
+                  </h3>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2">
+                    {employees.map((employee) => (
+                      <EmployeeCard
+                        key={employee.id}
+                        employee={employee}
+                        onClick={onSelectEmployee}
+                        onQuickAdd={onQuickAdd}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="files" className="h-full m-0">
+            <ScrollArea className="h-full">
+              <div className="p-3">
+                <FilesSection />
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        </div>
+      </Tabs>
+
+      {/* Create Synth Modal */}
+      <CreateSynthModal
+        isOpen={isCreateSynthModalOpen}
+        onClose={() => setIsCreateSynthModalOpen(false)}
+        onSave={handleSaveSynth}
+        onGenerationStart={handleGenerationStart}
+      />
+
+      {/* Edit Synth Modal */}
+      <EditSynthModal
+        isOpen={isEditSynthModalOpen}
+        onClose={() => {
+          setIsEditSynthModalOpen(false);
+          setEditingSynth(null);
+        }}
+        onSave={handleSaveEditedSynth}
+        synth={editingSynth}
+      />
+
+      {/* Create Team Modal */}
+      <CreateTeamModal
+        isOpen={isCreateTeamModalOpen}
+        onClose={() => setIsCreateTeamModalOpen(false)}
+        onSave={handleSaveTeam}
+        availableSynths={employees}
+        customSynths={customSynths}
+        onTeamGenerationStart={handleTeamGenerationStart}
+      />
+
+      {/* Delete Synth Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Custom Synth</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{synthToDelete?.name}"? This action cannot be undone and the synth will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelDelete}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmDelete}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Delete Synth
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+};
+
+export default BrowserPanel;
