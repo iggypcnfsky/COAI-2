@@ -12,6 +12,15 @@ export interface AIEmployee {
   systemPrompt: string;
   baseModel: 'gpt-4.1-nano' | 'o4-mini' | 'o3' | 'o1' | 'gpt-4.1' | 'gpt-4o' | 'chatgpt-4o-latest';
   isLoadingImage?: boolean; // Flag to indicate if profile image is still being generated
+  isPublic?: boolean; // Flag to indicate if this synth is publicly visible
+}
+
+// Pagination options for fetching data
+export interface PaginationOptions {
+  limit?: number;
+  before?: Date;
+  after?: Date;
+  cursor?: string;
 }
 
 // Chat message type definition
@@ -92,6 +101,7 @@ export interface COAISynthData {
   experience?: string[];
   systemPrompt: string;
   baseModel: 'gpt-4.1-nano' | 'o4-mini' | 'o3' | 'o1' | 'gpt-4.1' | 'gpt-4o' | 'chatgpt-4o-latest';
+  isPublic?: boolean;
   metadata?: Record<string, any>;
 }
 
@@ -101,6 +111,7 @@ export interface COAITeamData {
   description?: string;
   teamImage?: string;
   teamType: 'custom' | 'premade';
+  isPublic?: boolean;
   metadata?: Record<string, any>;
 }
 
@@ -204,6 +215,8 @@ export interface CustomTeam {
   selectedSynths: AIEmployee[];
   createdAt: Date;
   description?: string;
+  teamImage?: string;
+  isPublic?: boolean; // Flag to indicate if this team is publicly visible
 }
 
 export interface Thread {

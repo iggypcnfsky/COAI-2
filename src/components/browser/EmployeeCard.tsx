@@ -12,9 +12,7 @@ interface EmployeeCardProps {
 
 const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, onClick, onQuickAdd }) => {
   const [isDragging, setIsDragging] = React.useState(false);
-  const [isHovered, setIsHovered] = React.useState(false);
-  const [videoLoaded, setVideoLoaded] = React.useState(false);
-  const videoRef = React.useRef<HTMLVideoElement>(null);
+
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('application/json', JSON.stringify(employee));
@@ -57,37 +55,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, onClick, onQuickA
     setIsDragging(false);
   };
 
-  const handleMouseEnter = async () => {
-    setIsHovered(true);
-    if (videoRef.current && videoLoaded) {
-      try {
-        videoRef.current.currentTime = 0;
-        await videoRef.current.play();
-      } catch (error) {
-        console.log('Video play failed:', error);
-      }
-    }
-  };
 
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
-  };
-
-  const handleVideoLoaded = () => {
-    setVideoLoaded(true);
-  };
-
-  const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
-    console.log('Video failed to load:', e);
-    setVideoLoaded(false);
-  };
-
-  // Generate video path based on employee name
-  const videoPath = `/videos/${employee.name.toLowerCase()}.mp4`;
 
   return (
     <Card 
@@ -98,8 +66,6 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, onClick, onQuickA
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       {/* Full background image */}
       <div 
@@ -108,24 +74,6 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, onClick, onQuickA
       >
         {/* Dark overlay for better text readability */}
         <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors duration-300" />
-      </div>
-
-      {/* Video element - always present but hidden when not hovered */}
-      <div className={`absolute inset-0 z-10 transition-opacity duration-300 ${isHovered && videoLoaded ? 'opacity-100' : 'opacity-0'}`}>
-        <video
-          ref={videoRef}
-          className="w-full h-full object-cover"
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          onLoadedData={handleVideoLoaded}
-          onError={handleVideoError}
-        >
-          <source src={videoPath} type="video/mp4" />
-        </video>
-        {/* Dark overlay for video as well */}
-        <div className="absolute inset-0 bg-black/20" />
       </div>
       
       {/* Content overlay */}

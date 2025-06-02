@@ -1,14 +1,12 @@
 import React from 'react';
-import { PremadeTeam, getTeamEmployees } from '@/data/premadeTeams';
-import { AIEmployee } from '@/types';
+import { AIEmployee, CustomTeam } from '@/types';
 import { Users, Plus, X, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface TeamProfileProps {
-  team: PremadeTeam;
-  allEmployees: AIEmployee[];
+  team: CustomTeam;
   onBack: () => void;
   onAddTeam: (employees: AIEmployee[]) => void;
   onSelectEmployee: (employee: AIEmployee) => void;
@@ -129,20 +127,19 @@ const TeamEmployeeCard: React.FC<{
 
 const TeamProfile: React.FC<TeamProfileProps> = ({
   team,
-  allEmployees,
   onBack,
   onAddTeam,
   onSelectEmployee,
-}) => {
-  const teamEmployees = getTeamEmployees(team, allEmployees);
+  }) => {
+    const teamEmployees = team.selectedSynths;
 
-  const handleAddTeam = () => {
-    onAddTeam(teamEmployees);
-  };
+    const handleAddTeam = () => {
+      onAddTeam(teamEmployees);
+    };
 
-  const handleQuickAddEmployee = (employee: AIEmployee) => {
-    onAddTeam([employee]);
-  };
+    const handleQuickAddEmployee = (employee: AIEmployee) => {
+      onAddTeam([employee]);
+    };
 
   return (
     <div className="h-full bg-neutral-50 dark:bg-neutral-900 md:border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
@@ -171,7 +168,7 @@ const TeamProfile: React.FC<TeamProfileProps> = ({
           <div className="w-full h-[320px] overflow-hidden relative flex-shrink-0">
             <div 
               className="w-full h-full bg-cover bg-center bg-no-repeat"
-              style={{ backgroundImage: `url(${team.backgroundImage})` }}
+              style={{ backgroundImage: `url(${team.teamImage || '/images/default-team-bg.jpg'})` }}
             >
               {/* Dark overlay for better text readability */}
               <div className="absolute inset-0 bg-black/30" />
@@ -185,7 +182,7 @@ const TeamProfile: React.FC<TeamProfileProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">{team.icon}</span>
+                  <span className="text-2xl">👥</span>
                   <h2 className="text-2xl font-bold drop-shadow-lg">
                     {team.name}
                   </h2>
@@ -195,11 +192,13 @@ const TeamProfile: React.FC<TeamProfileProps> = ({
           </div>
           
           {/* Team description section - separated from image */}
-          <div className="p-6 bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
-            <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
-              {team.description}
-            </p>
-          </div>
+          {team.description && (
+            <div className="p-6 bg-white dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
+              <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                {team.description}
+              </p>
+            </div>
+          )}
           
           {/* Content below image */}
           <div className="p-4 flex flex-col">

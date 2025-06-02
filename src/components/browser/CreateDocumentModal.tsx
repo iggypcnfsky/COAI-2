@@ -5,19 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { FileText, Save, Edit } from 'lucide-react';
-
-interface Document {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import type { Document } from '@/types/store';
 
 interface CreateDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (document: Document) => void;
+  onSave: (documentData: { title: string; content: string; id?: string }) => void;
   editDocument?: Document | null;
 }
 
@@ -66,20 +59,11 @@ const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       return;
     }
 
-    const documentToSave: Document = isEditMode
-      ? {
-          ...editDocument!,
-          title: formData.title.trim(),
-          content: formData.content.trim(),
-          updatedAt: new Date(),
-        }
-      : {
-          id: `doc-${Date.now()}`,
-          title: formData.title.trim(),
-          content: formData.content.trim(),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
+    const documentToSave = {
+      title: formData.title.trim(),
+      content: formData.content.trim(),
+      ...(isEditMode && { id: editDocument!.id }),
+    };
 
     onSave(documentToSave);
     handleClose();

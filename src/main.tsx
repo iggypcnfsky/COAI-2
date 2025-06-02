@@ -11,6 +11,8 @@ const options = {
   api_host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST,
 };
 
+// Note: AuthProvider and ApiKeyProvider are maintained for backward compatibility
+// They are now just wrappers around the Zustand store for gradual migration
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <PostHogProvider 

@@ -4,52 +4,52 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import EmployeeCard from './EmployeeCard';
 import CustomSynthCard from './CustomSynthCard';
 import LoadingSynthCard from './LoadingSynthCard';
 import LoadingTeamCard from './LoadingTeamCard';
-import TeamCard from './TeamCard';
 import CustomTeamCard from './CustomTeamCard';
 import FilesSection from './FilesSection';
 import CreateSynthModal from './CreateSynthModal';
 import EditSynthModal from './EditSynthModal';
 import CreateTeamModal, { CustomTeam } from './CreateTeamModal';
 import { AIEmployee } from '@/types';
-import { PremadeTeam, premadeTeams } from '@/data/premadeTeams';
 import { generateAISynth, generateAITeam, generateSynthImage } from '@/lib/api-utils';
+import { useAuth } from '@/hooks/store/useAuth';
 
 interface BrowserPanelProps {
-  employees: AIEmployee[];
+  employees?: AIEmployee[];
   customSynths: AIEmployee[];
   onSelectEmployee: (employee: AIEmployee) => void;
   onQuickAdd: (employee: AIEmployee) => void;
   onQuickAddTeam: (employees: AIEmployee[]) => void;
-  onSelectTeam: (team: PremadeTeam) => void;
+  onSelectTeam: (team: CustomTeam) => void;
   onSelectCustomTeam: (team: CustomTeam) => void;
   onAddNewSynth: (synth: AIEmployee) => void;
   onEditSynth: (synth: AIEmployee) => void;
   onDeleteSynth: (synthId: string) => void;
   onAddNewTeam: (team: CustomTeam) => void;
-
   customTeams: CustomTeam[];
+  publicTeams?: CustomTeam[];
   onToggleCollapse: () => void;
 }
 
 const BrowserPanel: React.FC<BrowserPanelProps> = ({
-  employees,
   customSynths = [],
   onSelectEmployee,
   onQuickAdd,
   onQuickAddTeam,
   onSelectTeam,
-  onSelectCustomTeam,
   onAddNewSynth,
   onEditSynth,
   onDeleteSynth,
   onAddNewTeam,
   customTeams = [],
+  publicTeams = [],
   onToggleCollapse,
 }) => {
+  // Get auth state from the legacy context (which now uses Zustand)
+  const { } = useAuth();
+  
   const [activeTab, setActiveTab] = useState('teams');
   const [isCreateSynthModalOpen, setIsCreateSynthModalOpen] = useState(false);
   const [isEditSynthModalOpen, setIsEditSynthModalOpen] = useState(false);
@@ -167,13 +167,17 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
   const handleGenerationStart = (generationData: { keywords: string; baseModel: string; averageAge: number; }) => {
     console.log('🚀 Generation started with data:', generationData);
     
-    const loadingId = `loading-${Date.now()}`;
+    // Generate a timestamp that will be used for both loading and permanent IDs
+    const timestamp = Date.now();
+    // Use a consistent format that can be parsed in the synth generation function
+    const loadingId = `loading-${timestamp}`;
+    
     const newLoadingSynth: LoadingSynth = {
       id: loadingId,
       keywords: generationData.keywords,
       baseModel: generationData.baseModel,
       averageAge: generationData.averageAge,
-      startTime: Date.now(),
+      startTime: timestamp,
     };
     
     console.log('🔄 Adding loading synth:', newLoadingSynth);
@@ -206,9 +210,14 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
 
       console.log('✅ AI Synth data received:', generatedSynthData);
 
-      // Create the new synth with placeholder image
+      // Extract timestamp from loading ID to create a permanent ID
+      // Format: loading-[timestamp] -> synth-[timestamp]
+      const loadingIdParts = loadingSynth.id.split('-');
+      const timestamp = loadingIdParts.length > 1 ? loadingIdParts[1] : Date.now().toString();
+      const permanentId = `synth-${timestamp}`;
+      
       const newSynth: AIEmployee = {
-        id: `synth-${Date.now()}`,
+        id: permanentId,
         name: generatedSynthData.name,
         age: generatedSynthData.age,
         role: generatedSynthData.role,
@@ -220,7 +229,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
         isLoadingImage: true, // Set to true - useEffect will handle background image generation
       };
 
-      console.log('📝 Created synth object:', newSynth);
+      console.log('📝 Created synth object:', newSynth, 'from loading ID:', loadingSynth.id);
 
       // Remove loading synth first, then add real synth
       setLoadingSynths(prev => {
@@ -323,7 +332,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
       const teamSynths: AIEmployee[] = generatedTeamData.members.map((member: GeneratedTeamMember, index: number) => {
         if (member.isExisting && member.existingId) {
           // Find the existing synth
-          const existingSynth = [...employees, ...customSynths].find(s => s.id === member.existingId);
+          const existingSynth = customSynths.find(s => s.id === member.existingId);
           return existingSynth || {
             id: member.existingId,
             name: member.name,
@@ -401,12 +410,13 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
 
 
 
-  // Get all available synths for team creation (both premade and custom)
-  const allAvailableSynths = [...employees, ...customSynths];
+
 
   // Effect to handle background image generation for synths with isLoadingImage = true
   useEffect(() => {
     const synthsNeedingImages = customSynths.filter(synth => synth.isLoadingImage);
+    
+    // Debug logging removed to reduce console noise
     
     synthsNeedingImages.forEach(async (synth) => {
       // Check if we're already processing this synth
@@ -535,7 +545,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
                         <CustomTeamCard
                           key={team.id}
                           team={team}
-                          onClick={onSelectCustomTeam}
+                          onClick={onSelectTeam}
                           onQuickAdd={handleQuickAddCustomTeam}
                         />
                       ))}
@@ -543,24 +553,25 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
                   </div>
                 ) : null}
 
-                {/* Premade Teams Section */}
-                <div>
-                  <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Premade Teams ({premadeTeams.length})
-                  </h3>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    {premadeTeams.map((team) => (
-                      <TeamCard
-                        key={team.id}
-                        team={team}
-                        allEmployees={allAvailableSynths}
-                        onClick={onSelectTeam}
-                        onQuickAdd={onQuickAddTeam}
-                      />
-                    ))}
+                {/* Public Teams Section */}
+                {publicTeams && publicTeams.length > 0 ? (
+                  <div>
+                    <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Public Teams ({publicTeams.length})
+                    </h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      {publicTeams.map((team) => (
+                        <CustomTeamCard
+                          key={team.id}
+                          team={team}
+                          onClick={onSelectTeam}
+                          onQuickAdd={handleQuickAddCustomTeam}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
+                ) : null}
               </div>
             </ScrollArea>
           </TabsContent>
@@ -624,29 +635,14 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
                           onQuickAdd={onQuickAdd}
                           onEdit={handleEditSynth}
                           onDelete={handleDeleteSynth}
+                          onUpdateSynth={onEditSynth}
                         />
                       ))}
                     </div>
                   </div>
                 ) : null}
 
-                {/* Premade Synths Section */}
-                <div>
-                  <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
-                    <Bot className="h-4 w-4" />
-                    Premade Synths ({employees.length})
-                  </h3>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2">
-                    {employees.map((employee) => (
-                      <EmployeeCard
-                        key={employee.id}
-                        employee={employee}
-                        onClick={onSelectEmployee}
-                        onQuickAdd={onQuickAdd}
-                      />
-                    ))}
-                  </div>
-                </div>
+
               </div>
             </ScrollArea>
           </TabsContent>
@@ -685,7 +681,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
         isOpen={isCreateTeamModalOpen}
         onClose={() => setIsCreateTeamModalOpen(false)}
         onSave={handleSaveTeam}
-        availableSynths={employees}
+        availableSynths={[]}
         customSynths={customSynths}
         onTeamGenerationStart={handleTeamGenerationStart}
       />

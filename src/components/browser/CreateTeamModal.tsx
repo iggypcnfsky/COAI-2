@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,6 +30,7 @@ export interface CustomTeam {
   description?: string;
   selectedSynths: AIEmployee[];
   teamImage?: string;
+  isPublic: boolean;
 }
 
 interface GeneratedTeamMember {
@@ -64,6 +65,7 @@ const CreateTeamModal: React.FC<CreateTeamModalProps> = ({
   const [activeTab, setActiveTab] = useState<'manual' | 'ai'>('ai');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedTeam, setGeneratedTeam] = useState<GeneratedTeam | null>(null);
+  const [isPublic, setIsPublic] = useState(true);
 
   // Manual form state
   const [formData, setFormData] = useState({
@@ -216,6 +218,7 @@ const CreateTeamModal: React.FC<CreateTeamModalProps> = ({
       description: generatedTeam.description,
       selectedSynths: teamSynths,
       teamImage: generatedTeam.teamImage,
+      isPublic,
     };
 
     onSave(newTeam);
@@ -249,6 +252,7 @@ const CreateTeamModal: React.FC<CreateTeamModalProps> = ({
       description: formData.description.trim() || undefined,
       selectedSynths: validatedSynths,
       teamImage: formData.teamImage || undefined,
+      isPublic,
     };
 
     onSave(newTeam);
@@ -270,6 +274,7 @@ const CreateTeamModal: React.FC<CreateTeamModalProps> = ({
     setTeamType('team'); // Reset team type to default
     setActiveTab('ai');
     setAverageAge(35); // Reset average age to default
+    setIsPublic(true);
     onClose();
   };
 
@@ -493,6 +498,33 @@ const CreateTeamModal: React.FC<CreateTeamModalProps> = ({
                     </CardContent>
                   </Card>
                 )}
+
+                {/* Add this before the dialog footer buttons in the AI tab */}
+                <div className="flex items-center space-x-2 mt-4">
+                  <Checkbox 
+                    id="ai-team-is-public" 
+                    checked={isPublic} 
+                    onCheckedChange={(checked) => setIsPublic(checked as boolean)}
+                  />
+                  <Label htmlFor="ai-team-is-public" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Make this team public
+                  </Label>
+                  <p className="text-xs text-neutral-500 ml-2">
+                    Public teams can be seen and used by other users
+                  </p>
+                </div>
+                
+                <div className="flex justify-end gap-2 mt-6">
+                  <Button variant="outline" onClick={handleClose}>
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={handleSaveAITeam}
+                    disabled={!generatedTeam}
+                  >
+                    Create AI Team
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -742,26 +774,32 @@ const CreateTeamModal: React.FC<CreateTeamModalProps> = ({
                 </ScrollArea>
               </div>
             </div>
+
+            {/* Add this before the manual form's dialog footer buttons */}
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="manual-team-is-public" 
+                checked={isPublic} 
+                onCheckedChange={(checked) => setIsPublic(checked as boolean)}
+              />
+              <Label htmlFor="manual-team-is-public" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                Make this team public
+              </Label>
+              <p className="text-xs text-neutral-500 ml-2">
+                Public teams can be seen and used by other users
+              </p>
+            </div>
+            
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={handleClose}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveManual}>
+                Create Team
+              </Button>
+            </div>
           </TabsContent>
         </Tabs>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
-            Cancel
-          </Button>
-          {activeTab === 'ai' ? (
-            <Button 
-              onClick={handleSaveAITeam}
-              disabled={!generatedTeam}
-            >
-              Create AI Team
-            </Button>
-          ) : (
-            <Button onClick={handleSaveManual}>
-              Create Team
-            </Button>
-          )}
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

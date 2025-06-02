@@ -2,29 +2,29 @@ import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { useApiKey } from '@/lib/apiKeyContext';
-import { useAuth } from '@/lib/auth';
-import { Key, Check, Trash2, LogIn, LogOut, PanelLeftOpen, Image } from 'lucide-react';
+import { useApiKey } from '@/hooks/store/useApiKey';
+import { useAuth } from '@/hooks/store/useAuth';
+import { Key, Check, LogIn, LogOut, PanelLeftOpen, Image } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import Logo from '@/components/Logo';
 import { getRunwareApiKey, setRunwareApiKey, hasRunwareApiKey } from '@/lib/api-utils';
+import { supabase } from '@/lib/supabase';
 
 interface HeaderProps {
   isBrowserCollapsed: boolean;
   onToggleBrowser: () => void;
-  onClearChat?: () => void;
-  hasMessages?: boolean;
   isLoadingData?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, onClearChat, hasMessages = false, isLoadingData = false }) => {
+const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, isLoadingData = false }) => {
   const { openaiApiKey, setOpenaiApiKey, isApiKeyValid } = useApiKey();
   const { 
     user, 
     profile, 
     loading, 
     signInWithGoogle, 
-    signOut
+    signOut,
+    refreshProfile
   } = useAuth();
   const [tempApiKey, setTempApiKey] = useState(openaiApiKey);
   const [tempRunwareApiKey, setTempRunwareApiKey] = useState(getRunwareApiKey() || '');
@@ -32,21 +32,50 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, on
   const [signOutLoading, setSignOutLoading] = useState(false);
   const [authInitialized, setAuthInitialized] = useState(false);
 
-  // Failsafe: Mark auth as initialized after 5 seconds to prevent indefinite loading
-  React.useEffect(() => {
-    const timer = setTimeout(() => {
-      setAuthInitialized(true);
-    }, 5000);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Mark as initialized when loading is false
+  // Mark auth as initialized when loading is false
   React.useEffect(() => {
     if (!loading) {
       setAuthInitialized(true);
     }
   }, [loading]);
+
+  // Increase timeout and add more robust recovery
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!authInitialized) {
+        console.log('⚠️ Auth initialization timed out, forcing state transition');
+        setAuthInitialized(true);
+        
+        // If we timed out but have a user in local storage, attempt recovery
+        try {
+          const storedSession = localStorage.getItem('supabase.auth.token');
+          if (storedSession) {
+            console.log('🔍 Found session in localStorage during timeout recovery');
+            try {
+              const parsedSession = JSON.parse(storedSession);
+              if (parsedSession?.currentSession?.access_token) {
+                console.log('🔍 Valid token found in localStorage, forcing recovery');
+                
+                // Try to refresh the profile
+                refreshProfile().catch(e => console.error('Error refreshing profile during recovery:', e));
+                
+                // Also attempt to manually refresh the token with Supabase
+                supabase.auth.refreshSession().catch(e => {
+                  console.warn('⚠️ Token refresh during recovery failed:', e);
+                });
+              }
+            } catch (e) {
+              console.warn('⚠️ Failed to parse stored session during recovery:', e);
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ Error accessing localStorage during recovery:', e);
+        }
+      }
+    }, 15000); // Increased to 15 seconds for slower connections
+
+    return () => clearTimeout(timer);
+  }, [authInitialized, refreshProfile]);
 
   const handleSaveApiKey = () => {
     setOpenaiApiKey(tempApiKey);
@@ -71,15 +100,54 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, on
   const handleSignOut = async () => {
     try {
       setSignOutLoading(true);
-      const { error } = await signOut();
-      if (error) {
-        console.error('Sign-out error:', error);
-        // You could add a toast notification here
-      } else {
-        console.log('Successfully signed out');
+      console.log('🔑 Starting sign out process...');
+      
+      // First, clear all auth-related storage preemptively
+      // This ensures we clean up even if the API call fails
+      try {
+        console.log('🔑 Preemptively clearing auth storage...');
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.includes('supabase') || key.includes('auth'))) {
+            console.log('🔑 Removing localStorage item:', key);
+            localStorage.removeItem(key);
+          }
+        }
+        
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && (key.includes('supabase') || key.includes('auth'))) {
+            console.log('🔑 Removing sessionStorage item:', key);
+            sessionStorage.removeItem(key);
+          }
+        }
+      } catch (e) {
+        console.error('❌ Storage cleanup failed:', e);
       }
+      
+      // Call signOut method
+      const { error } = await signOut();
+      
+      if (error) {
+        console.error('❌ Sign-out error:', error);
+        
+        // Force page reload to ensure clean state
+        window.location.href = window.location.origin;
+        return;
+      }
+      
+      console.log('✅ Successfully signed out');
+      
+      // Force page reload to ensure clean state
+      setTimeout(() => {
+        console.log('🔑 Forcing page reload to ensure clean state...');
+        window.location.href = window.location.origin;
+      }, 500);
     } catch (error) {
-      console.error('Sign-out exception:', error);
+      console.error('❌ Sign-out exception:', error);
+      
+      // Force page reload even on error
+      window.location.href = window.location.origin;
     } finally {
       setSignOutLoading(false);
     }
@@ -143,47 +211,7 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, on
 
   // Debug info (can be removed later)
   React.useEffect(() => {
-    console.log('🔍 Header Debug - Auth state:', { 
-      user: !!user, 
-      loading, 
-      authInitialized,
-      isAuthLoading,
-      userEmail: user?.email,
-      profileDisplayName: profile?.profile_data?.displayName 
-    })
-    
-    if (user) {
-      console.log('🔍 User object:', user);
-      console.log('🔍 User metadata (ALL FIELDS):', JSON.stringify(user.user_metadata, null, 2));
-      console.log('🔍 User identities:', user.identities);
-      console.log('🔍 Profile:', profile);
-      console.log('🔍 Computed display info:', { displayName, avatar });
-      console.log('🔍 Avatar URL details:', {
-        'user_metadata.picture': user.user_metadata?.picture,
-        'user_metadata.avatar_url': user.user_metadata?.avatar_url,
-        'profile.avatar': profile?.profile_data?.avatar,
-        'final_avatar': avatar,
-        'avatar_is_valid_url': avatar && (avatar.startsWith('http') || avatar.startsWith('data:'))
-      });
-      
-      // Check Google identity data specifically
-      const googleIdentity = user.identities?.find((identity: any) => identity.provider === 'google');
-      if (googleIdentity && googleIdentity.identity_data) {
-        console.log('🔍 Google identity data (ALL FIELDS):', JSON.stringify(googleIdentity.identity_data, null, 2));
-        console.log('🔍 Google identity data (object):', googleIdentity.identity_data);
-        
-        // Check specific avatar fields
-        const identityData = googleIdentity.identity_data;
-        console.log('🔍 Specific avatar fields check:', {
-          'picture': identityData.picture,
-          'avatar_url': identityData.avatar_url,
-          'photo': identityData.photo,
-          'image': identityData.image,
-          'profile_picture': identityData.profile_picture,
-          'thumbnail': identityData.thumbnail
-        });
-      }
-    }
+    // Debug logging removed to reduce console noise
   }, [user, profile, displayName, avatar, loading, authInitialized, isAuthLoading])
 
   return (
@@ -237,17 +265,6 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, on
 
       {/* Desktop API Button, Auth and Clear Chat */}
       <div className="hidden md:flex flex-row space-x-2 items-center">
-        {onClearChat && hasMessages && (
-          <Button 
-            onClick={onClearChat}
-            variant="outline"
-            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Clear Chat
-          </Button>
-        )}
-        
         {/* API Keys Button */}
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
           <DialogTrigger asChild>
@@ -382,16 +399,6 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, on
 
       {/* Mobile API Key Button and Auth */}
       <div className="md:hidden flex items-center space-x-2">
-        {onClearChat && hasMessages && (
-          <Button 
-            onClick={onClearChat}
-            variant="outline"
-            size="sm"
-            className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        )}
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
           <DialogTrigger asChild>
             <Button 

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+// Removed duplicate imports - using existing ones below
 import Header from './Header';
 import BrowserPanel from '../browser/BrowserPanel';
 import ProfileSection from '../profile/ProfileSection';
@@ -6,28 +7,29 @@ import TeamProfile from '../profile/TeamProfile';
 import CustomTeamProfile from '../profile/CustomTeamProfile';
 import ChatSection from '../chat/ChatSection';
 import EditTeamModal from '../browser/EditTeamModal';
-import { AIEmployee, ChatMessage, TeamMember, Team } from '@/types';
-import { PremadeTeam } from '@/data/premadeTeams';
+import { AIEmployee, ChatMessage, TeamMember, Team, COAITeam } from '@/types';
 import { CustomTeam } from '../browser/CreateTeamModal';
 import { streamChat } from '@/lib/supabase';
 import { HumanTiming, sleep } from '@/lib/utils';
-import { useAuth } from '@/lib/auth';
-import { SupabaseAdapter } from '@/lib/storage';
-import { useTeamDynamics } from '@/hooks/useTeamDynamics';
-import { useApiKey } from '@/lib/apiKeyContext';
-import { useThreadSynths, useSynths, useTeams } from '@/hooks/useCOAI';
+// Use the Zustand store hooks instead of context
+import { useAuth } from '@/hooks/store/useAuth';
+// import { useTeamDynamics } from '@/hooks/useTeamDynamics'; // Removed - not using team dynamics
+import { useApiKey } from '@/hooks/store/useApiKey';
+import { useThreadSynths, useSynths, useTeams } from '@/hooks/store';
 import { COAITeamSynthReference, COAISynthData, COAITeamSynth } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { useAppStore } from '@/stores/appStore';
+
+import { directService } from '@/lib/services/directService';
 
 interface LayoutProps {
-  employees: AIEmployee[];
   initialMessages: ChatMessage[];
 }
 
-const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
+const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   const [selectedEmployee, setSelectedEmployee] = useState<AIEmployee | null>(null);
   const [selectedTeamMember, setSelectedTeamMember] = useState<TeamMember | null>(null);
-  const [selectedPremadeTeam, setSelectedPremadeTeam] = useState<PremadeTeam | null>(null);
+  const [selectedPremadeTeam, setSelectedPremadeTeam] = useState<COAITeam | null>(null);
   const [selectedCustomTeam, setSelectedCustomTeam] = useState<CustomTeam | null>(null);
   const [isProfileCollapsed, setIsProfileCollapsed] = useState(true);
   const [isBrowserCollapsed, setIsBrowserCollapsed] = useState(false);
@@ -39,24 +41,24 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
   const [isEditTeamModalOpen, setIsEditTeamModalOpen] = useState(false);
   const [teamToEdit, setTeamToEdit] = useState<CustomTeam | null>(null);
   
-  // API key context
+  // API key context - same interface, but now powered by Zustand
   const { openaiApiKey, isApiKeyValid } = useApiKey();
   
-  // Auth context
+  // Auth context - same interface, but now powered by Zustand
   const { user } = useAuth();
   
   // Simple state management - no persistence for unauthenticated users
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]); // Legacy teams for UI compatibility
   const [messages, setMessagesRaw] = useState<ChatMessage[]>(initialMessages);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
   
   // Lightweight cache management for thread metadata (just for UI continuity)
-  const saveThreadsCache = React.useCallback((threads: Team[]) => {
+  const saveThreadsCache = React.useCallback((teams: Team[]) => {
     if (user) {
       try {
-        const cacheData = threads.map(t => ({
+        const cacheData = teams.map(t => ({
           id: t.id,
           name: t.name,
           memberCount: t.members.length,
@@ -95,17 +97,17 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
   // Load cached threads immediately when user is available
   React.useEffect(() => {
     if (user && teams.length === 0 && !isLoadingData) {
-      const cachedThreads = loadThreadsCache();
-      if (cachedThreads.length > 0) {
-        console.log('📦 Loading cached threads for instant display:', cachedThreads.length);
-        setTeams(cachedThreads);
+      const cachedTeams = loadThreadsCache();
+      if (cachedTeams.length > 0) {
+        console.log('📦 Loading cached teams for instant display:', cachedTeams.length);
+        setTeams(cachedTeams);
       }
     }
   }, [user, teams.length, isLoadingData, loadThreadsCache]);
   
-  // Supabase adapter - only available when user is authenticated (memoized to prevent infinite loops)
-  const adapter = React.useMemo(() => {
-    return user ? new SupabaseAdapter(user.id) : null;
+  // Initialize directService with user when authenticated
+  React.useEffect(() => {
+    directService.setUser(user?.id || null);
   }, [user?.id]);
 
   // Simple setMessages - no localStorage, auto-saving handled by separate useEffect
@@ -119,14 +121,76 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
   // Custom synths - no persistence for unauthenticated users
   const [customSynths, setCustomSynths] = useState<AIEmployee[]>([]);
   
+  // No legacy employees - using only custom synths from Supabase
+  
+  // Get thread-synth actions directly from the store
+  const addSynthToThread = useAppStore(state => state.addSynthToThread);
+  const removeSynthFromThread = useAppStore(state => state.removeSynthFromThread);
+  const getThreadSynths = useAppStore(state => state.getThreadSynths);
+  const updateTeamSynthReference = useAppStore(state => state.updateTeamSynthReference);
+  const switchThread = useAppStore(state => state.switchThread);
+  
+  // Function to refetch thread synths
+  const refetchThreadSynths = useCallback(() => {
+    if (activeThreadId) {
+      console.log('🔍 DEBUG: refetchThreadSynths called for thread:', activeThreadId);
+      getThreadSynths(activeThreadId);
+    } else {
+      console.log('🔍 DEBUG: refetchThreadSynths called but no activeThreadId');
+    }
+  }, [activeThreadId, getThreadSynths]);
+
   // Thread synths hook - for managing synths in the current thread
   const {
-    threadSynths,
-    addSynthToThread,
-    removeSynthFromThread,
-    updateThreadSynthReference,
-    refetch: refetchThreadSynths
-  } = useThreadSynths(activeThreadId || '');
+    threadSynths
+  } = useThreadSynths();
+  
+  // Convert store synths directly to team members - no complex adaptation needed
+  const threadTeamMembers = useMemo(() => {
+    console.log('🔍 DEBUG: Converting threadSynths to teamMembers:', threadSynths.length, 'synths');
+    
+    return threadSynths.map(synth => {
+      // COAISynth has synth_data property with the actual data
+      const synthData = synth.synth_data || {};
+      console.log('🔍 DEBUG: Processing synth:', synth.id, 'with data:', synthData.name);
+      
+      return {
+        id: synth.id,
+        name: synthData.name || 'Unknown',
+        role: synthData.role || 'Unknown',
+        profileImage: synthData.profileImage || '/default-avatar.png',
+        model: synthData.baseModel || 'gpt-4',
+        systemPrompt: synthData.systemPrompt || '',
+      };
+    });
+  }, [threadSynths]);
+
+  // Function to get members for any thread from the store
+  const getThreadMembersFromStore = useCallback((threadId: string): TeamMember[] => {
+    try {
+      const currentState = useAppStore.getState();
+      const synthEntities = currentState.entities?.synths || {};
+      const threadSynthIds = currentState.relationships?.threadSynths?.[threadId] || [];
+      
+      return threadSynthIds.map(synthId => {
+        const synth = synthEntities[synthId];
+        if (!synth) return null;
+        
+        const synthData = synth.synth_data || {};
+        return {
+          id: synth.id,
+          name: synthData.name || 'Unknown',
+          role: synthData.role || 'Unknown',
+          profileImage: synthData.profileImage || '/default-avatar.png',
+          model: synthData.baseModel || 'gpt-4',
+          systemPrompt: synthData.systemPrompt || '',
+        };
+      }).filter(Boolean) as TeamMember[];
+    } catch (error) {
+      console.warn(`Failed to get members for thread ${threadId}:`, error);
+      return [];
+    }
+  }, []);
 
   // Synths hook - for managing user's custom synths
   const {
@@ -142,9 +206,7 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
     createTeam: createSupabaseTeam,
     updateTeam: updateSupabaseTeam,
     deleteTeam: deleteSupabaseTeam,
-    loading: _teamsLoading,
-    error: _teamsError,
-    refetch: refetchSupabaseTeams
+    fetchTeams: refetchSupabaseTeams
   } = useTeams();
 
   // State to track team synths for all teams
@@ -184,7 +246,7 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         }, {} as Record<string, COAITeamSynth[]>);
         
         setTeamSynthsMap(newTeamSynthsMap);
-        console.log('📥 Loaded team synths for all teams:', Object.keys(newTeamSynthsMap).length);
+        // Debug logging removed to reduce console noise
       } catch (error) {
         console.error('❌ Failed to load team synths:', error);
       }
@@ -209,8 +271,8 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
           // Look for custom synth
           synthData = customSynths.find(synth => synth.id === synthRef.synthId) || null;
         } else {
-          // Look for built-in employee
-          synthData = employees.find(emp => emp.id === synthRef.synthId) || null;
+          // No built-in employees anymore, use metadata
+          synthData = null;
         }
         
         // If we found the synth, use its data; otherwise use metadata
@@ -250,74 +312,46 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         selectedSynths
       } as CustomTeam;
     });
-  }, [supabaseTeams, teamSynthsMap, customSynths, employees]);
+  }, [supabaseTeams, teamSynthsMap, customSynths]);
 
-  // Load thread synths when active thread changes
+
+
+
+
+  // Convert thread synths to team members for UI - this is the ONLY sync we need
   React.useEffect(() => {
     if (user && activeThreadId) {
-      console.log('🔄 Active thread changed, loading thread synths:', activeThreadId);
+      console.log('🔍 DEBUG: Loading thread synths for:', activeThreadId);
       refetchThreadSynths();
     }
   }, [user, activeThreadId, refetchThreadSynths]);
 
-  // Sync thread synths with team members when thread synths are loaded
+  // Sync the converted team members to UI state
   React.useEffect(() => {
-    if (user && activeThreadId && threadSynths.length > 0) {
-      console.log('🔄 Syncing thread synths with team members:', threadSynths.length);
-      
-      // Convert thread synths to team members for UI consistency
-      const synthTeamMembers = threadSynths
-        .filter(ts => ts.synth || ts.reference) // Ensure we have valid synth data
-        .map(ts => {
-          if (ts.synth) {
-            // Custom synth with full data
-            return {
-              id: ts.synth.id,
-              name: ts.synth.name,
-              role: ts.synth.role,
-              profileImage: ts.synth.profileImage,
-              model: ts.reference.metadata?.model || 'gpt-4',
-              systemPrompt: ts.reference.metadata?.systemPrompt || ts.synth.systemPrompt || '',
-            };
-          } else {
-            // Built-in synth from reference metadata  
-            const employee = employees.find(e => e.id === ts.reference.synthId);
-            return {
-              id: ts.reference.synthId,
-              name: employee?.name || ts.reference.metadata?.name || 'Unknown',
-              role: employee?.role || ts.reference.metadata?.role || 'Unknown',
-              profileImage: employee?.profileImage || ts.reference.metadata?.profileImage || '/default-avatar.png',
-              model: ts.reference.metadata?.model || 'gpt-4',
-              systemPrompt: ts.reference.metadata?.systemPrompt || employee?.systemPrompt || '',
-            };
-          }
-        });
-      
-      console.log('📝 Converting thread synths to team members:', synthTeamMembers.map(m => ({ id: m.id, name: m.name })));
-      setTeamMembers(synthTeamMembers);
-      
-      // Update the active team in teams array as well
-      setTeams(prev => prev.map(team => 
-        team.id === activeThreadId 
-          ? { ...team, members: synthTeamMembers }
-          : team
-      ));
-    } else if (user && activeThreadId && threadSynths.length === 0) {
-      // No thread synths found, clear team members
-      console.log('📝 No thread synths found, clearing team members');
-      setTeamMembers([]);
-      setTeams(prev => prev.map(team => 
-        team.id === activeThreadId 
-          ? { ...team, members: [] }
-          : team
-      ));
+    console.log('🔍 DEBUG: Syncing threadTeamMembers to UI state:', threadTeamMembers.length);
+    
+    // Simply set the team members from the store conversion
+    setTeamMembers(threadTeamMembers);
+    
+    // Update the active team in teams array, and refresh members for all teams from store
+    if (activeThreadId) {
+      setTeams(prev => prev.map(team => {
+        if (team.id === activeThreadId) {
+          // Use the current threadTeamMembers for the active thread
+          return { ...team, members: threadTeamMembers };
+        } else {
+          // Refresh members from store for other threads to ensure they stay populated
+          const refreshedMembers = getThreadMembersFromStore(team.id);
+          return { ...team, members: refreshedMembers };
+        }
+      }));
     }
-  }, [activeThreadId, threadSynths, user, employees, setTeamMembers, setTeams]); // Include employees to get built-in synth data
+  }, [threadTeamMembers, activeThreadId, getThreadMembersFromStore]);
 
   // Sync Supabase synths with local state
   React.useEffect(() => {
     if (user && supabaseCustomSynths && supabaseCustomSynths.length > 0) {
-      console.log('📥 Loading synths from Supabase:', supabaseCustomSynths.length);
+      // Debug logging removed to reduce console noise
       
       // Convert COAISynth to AIEmployee format
       const convertedSynths: AIEmployee[] = supabaseCustomSynths.map(synthRow => ({
@@ -328,7 +362,7 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
       setCustomSynths(convertedSynths);
     } else if (user && supabaseCustomSynths && supabaseCustomSynths.length === 0) {
       // User is logged in but has no synths
-      console.log('📥 No synths found in Supabase for user');
+      // Debug logging removed to reduce console noise
       setCustomSynths([]);
     }
   }, [user, supabaseCustomSynths]);
@@ -336,24 +370,72 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
   // Load data when user becomes authenticated
   useEffect(() => {
     const loadData = async () => {
-      if (!user || !adapter) {
+      if (!user) {
         // Clear data when user logs out
         setTeams([]);
         setActiveThreadId(null);
         setTeamMembers([]);
         setCustomSynths([]);
-        // customTeams are now managed by useTeams hook
         setIsLoadingData(false);
+        
+        // Also clear the Zustand store
+        await switchThread(null);
         return;
       }
       
       try {
         setIsLoadingData(true);
-        console.log('🔄 Loading data from Supabase for authenticated user');
+        // Debug logging removed to reduce console noise
+        
+        // Load threads (chat conversations) and active thread
         const [loadedThreads, loadedActiveThreadId] = await Promise.all([
-          adapter.getThreads(), // Get individual chat threads
-          adapter.getActiveThreadId()
+          directService.fetchThreads(),
+          directService.getActiveThreadId()
         ]);
+        
+        // Convert threads to teams for UI compatibility (threads are displayed as "teams" in the chat UI)
+        // Load synths for all threads to populate the ChatChip profile pictures
+        const threadsAsTeams = await Promise.all(loadedThreads.map(async (thread) => {
+          let threadMembers: TeamMember[] = [];
+          
+          try {
+            // Load synths for this thread - this populates the store
+            await getThreadSynths(thread.id);
+            
+            // Get the current store state to access synth entities
+            const currentState = useAppStore.getState();
+            const synthEntities = currentState.entities?.synths || {};
+            const threadSynthIds = currentState.relationships?.threadSynths?.[thread.id] || [];
+            
+            // Convert thread synths to team members for UI
+            threadMembers = threadSynthIds.map(synthId => {
+              const synth = synthEntities[synthId];
+              if (!synth) return null;
+              
+              const synthData = synth.synth_data || {};
+              return {
+                id: synth.id,
+                name: synthData.name || 'Unknown',
+                role: synthData.role || 'Unknown',
+                profileImage: synthData.profileImage || '/default-avatar.png',
+                model: synthData.baseModel || 'gpt-4',
+                systemPrompt: synthData.systemPrompt || '',
+              };
+            }).filter(Boolean) as TeamMember[];
+          } catch (error) {
+            console.warn(`Failed to load synths for thread ${thread.id}:`, error);
+            // Keep empty array if loading fails
+          }
+          
+          return {
+            id: thread.id,
+            name: thread.title,
+            members: threadMembers, // Now populated with actual synths
+            messages: [], // Will be populated when thread is selected
+            createdAt: thread.createdAt,
+            isActive: thread.isActive
+          };
+        }));
         
         // Always update state, but intelligently merge with optimistic updates
         setTeams(prev => {
@@ -362,36 +444,43 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
           if (optimisticThreads.length > 0) {
             console.log('⚠️ Preserving optimistic threads and merging with Supabase data:', optimisticThreads.map(t => t.id));
             // Merge loaded threads with optimistic ones, keeping optimistic ones at the top
-            const nonOptimisticLoaded = loadedThreads.filter(t => !optimisticThreads.some(opt => opt.id === t.id));
+            const nonOptimisticLoaded = threadsAsTeams.filter(t => !optimisticThreads.some(opt => opt.id === t.id));
             const finalThreads = [...optimisticThreads, ...nonOptimisticLoaded];
-            saveThreadsCache(finalThreads); // Update cache with merged data
+            saveThreadsCache(finalThreads);
             return finalThreads;
           }
-          console.log('📥 Loading fresh threads from Supabase:', loadedThreads.length);
-          saveThreadsCache(loadedThreads); // Update cache with fresh data
-          return loadedThreads;
+          // Debug logging removed to reduce console noise
+          saveThreadsCache(threadsAsTeams);
+          return threadsAsTeams;
         });
         
         setActiveThreadId(loadedActiveThreadId);
         
-        // Load active thread data
+        // Also set the active thread in the Zustand store
         if (loadedActiveThreadId) {
-          const activeThread = loadedThreads.find(thread => thread.id === loadedActiveThreadId);
-          if (activeThread) {
-            console.log('📥 Loading active thread messages:', activeThread.messages.length);
-            setMessages(activeThread.messages);
-            setTeamMembers(activeThread.members);
+          await switchThread(loadedActiveThreadId);
+        }
+        
+        // Load active thread messages if we have an active thread
+        if (loadedActiveThreadId) {
+          try {
+            const threadMessages = await directService.fetchMessages(loadedActiveThreadId);
+            const convertedMessages = threadMessages.map(msg => directService.convertMessageDataToChatMessage(msg));
+            setMessages(convertedMessages);
+            // Debug logging removed to reduce console noise
+          } catch (error) {
+            console.error('❌ Failed to load thread messages:', error);
           }
         }
       } catch (error) {
-        console.error('❌ Failed to load data from Supabase:', error);
+        console.error('❌ Failed to load data from directService:', error);
       } finally {
         setIsLoadingData(false);
       }
     };
     
     loadData();
-  }, [user?.id, saveThreadsCache]); // Only depend on user.id to prevent unnecessary reloads
+  }, [user?.id, saveThreadsCache]);
 
   // Custom teams are now managed by the useTeams hook
 
@@ -404,14 +493,8 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
            employee.role;
   };
 
-  // Natural Team Dynamics hook
-  const { 
-    isNaturalDynamicsEnabled, 
-    // handleUserMessageWithDynamics
-  } = useTeamDynamics({
-    enableNaturalDynamics: true,
-    debugMode: true
-  });
+  // Natural Team Dynamics - simplified (removed complex dynamics)
+  const isNaturalDynamicsEnabled = false;
 
   // No persistence for custom synths when user is not authenticated
 
@@ -509,12 +592,8 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
     // If user is logged in, also delete from Supabase
     if (user) {
       try {
-        const success = await deleteSynth(synthId);
-        if (success) {
-          console.log('✅ Synth successfully deleted from Supabase:', synthId);
-        } else {
-          console.error('❌ Failed to delete synth from Supabase');
-        }
+        await deleteSynth(synthId);
+        console.log('✅ Synth successfully deleted from Supabase:', synthId);
       } catch (error) {
         console.error('❌ Failed to delete synth from Supabase:', error);
         // Keep the local deletion even if Supabase deletion fails
@@ -524,7 +603,50 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
 
   // No persistence for custom teams when user is not authenticated
 
+  const handleRemoveTeamMember = React.useCallback(async (id: string) => {
+    // Remove from local state first for instant UI feedback
+    setTeamMembers(prev => prev.filter(member => member.id !== id));
+    
+    // Clear selection if removing the selected team member
+    if (selectedTeamMember?.id === id) {
+      setSelectedTeamMember(null);
+      setIsProfileCollapsed(true);
+    }
+    
+    // Update the active team if it exists
+    if (activeThreadId) {
+      setTeams(prev => prev.map(team => 
+        team.id === activeThreadId 
+          ? { 
+              ...team, 
+              members: team.members.filter(member => member.id !== id),
+              messages // Keep current messages
+            }
+          : team
+      ));
+      
+              // Remove from database if user is authenticated
+        if (user) {
+          try {
+            // Check if synth exists in current thread
+            const synthExists = threadSynths.some(synth => synth.id === id);
+            
+            if (synthExists) {
+              await removeSynthFromThread(activeThreadId, id);
+              console.log('✅ Synth removed from thread in database:', id);
+            }
+          } catch (error) {
+            console.error('❌ Failed to remove synth from thread in database:', error);
+          }
+        }
+    }
+  }, [activeThreadId, selectedTeamMember?.id, user, threadSynths, removeSynthFromThread]);
 
+  const handleSelectTeamMember = React.useCallback((member: TeamMember) => {
+    setSelectedTeamMember(member);
+    setSelectedEmployee(null); // Clear employee selection
+    setIsProfileCollapsed(false);
+  }, []);
 
   // No auto-save needed - messages are saved immediately when created
 
@@ -536,13 +658,7 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
     setIsProfileCollapsed(false);
   }, []);
 
-  const handleSelectPremadeTeam = React.useCallback((team: PremadeTeam) => {
-    setSelectedPremadeTeam(team);
-    setSelectedEmployee(null); // Clear employee selection
-    setSelectedTeamMember(null); // Clear team member selection
-    setSelectedCustomTeam(null); // Clear custom team selection
-    setIsProfileCollapsed(false);
-  }, []);
+
 
   const handleSelectCustomTeam = React.useCallback((team: CustomTeam) => {
     setSelectedCustomTeam(team);
@@ -556,9 +672,8 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
     console.log(`🔍 [ADD TEAM DEBUG] Adding new team: ${newTeam.name}`);
     console.log(`🔍 [ADD TEAM DEBUG] Team has ${newTeam.selectedSynths.length} synths:`, newTeam.selectedSynths.map(s => ({ id: s.id, name: s.name })));
     
-    // First, extract any new synths that aren't already in customSynths or employees
+    // First, extract any new synths that aren't already in customSynths
     const existingSynthIds = new Set([
-      ...employees.map(e => e.id),
       ...customSynths.map(s => s.id)
     ]);
 
@@ -740,7 +855,7 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
     }
 
     // Update the team with real synth IDs in local state (handled by parent component)
-  }, [employees, customSynths, user, createSynth, createSupabaseTeam]);
+  }, [customSynths, user, createSynth, createSupabaseTeam]);
 
   const handleEditCustomTeam = React.useCallback((teamToEdit: CustomTeam) => {
     setTeamToEdit(teamToEdit);
@@ -798,8 +913,52 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
   }, [selectedCustomTeam?.id, user, deleteSupabaseTeam]);
 
   const handleAddToThread = React.useCallback(async (employee: AIEmployee) => {
+    // Ensure employee has a valid ID
+    if (!employee || !employee.id) {
+      console.error('❌ Invalid employee object or missing ID:', employee);
+      return;
+    }
+
+    // Ensure the employee ID is a string, not a stringified object
+    let employeeId: string;
+    
+    // Handle different ID formats
+    if (typeof employee.id === 'string') {
+      // If it looks like a JSON string, try to parse it
+      if (employee.id.startsWith('{') || employee.id.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(employee.id);
+          employeeId = parsed.synthId || parsed.id || employee.id;
+          console.log('🔍 Parsed JSON string ID to:', employeeId);
+        } catch (e) {
+          // If parsing fails, use the original string
+          console.log('🔍 Failed to parse JSON string ID, using original:', employee.id);
+          employeeId = employee.id;
+        }
+      } else {
+        employeeId = employee.id;
+      }
+    } else if (employee.id && typeof employee.id === 'object') {
+      // Handle case where ID is already an object
+      const objId = employee.id as any;
+      employeeId = objId.synthId || objId.id || String(employee.id);
+      console.log('🔍 Extracted ID from object:', employeeId);
+    } else {
+      console.error('❌ Could not determine valid employee ID:', employee);
+      return;
+    }
+    
+    // Validate that employeeId looks like a UUID if it's supposed to be one
+    // UUIDs should have dashes in specific positions
+    if (employeeId.includes('-') && !employeeId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      console.error('❌ Invalid UUID format:', employeeId);
+      // Try to clean up the ID - remove quotes, braces, etc.
+      employeeId = employeeId.replace(/['"{}]/g, '');
+      console.log('🔍 Cleaned up ID:', employeeId);
+    }
+    
     const newTeamMember: TeamMember = {
-      id: employee.id,
+      id: employeeId,
       name: employee.name || 'Unknown Name',
       role: employee.role || 'Unknown Role',
       profileImage: employee.profileImage || '/default-avatar.png',
@@ -809,31 +968,77 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
 
     // Add to local team members state for UI
     setTeamMembers(prev => {
-      if (prev.some(member => member.id === employee.id)) return prev;
+      if (prev.some(member => member.id === employeeId)) return prev;
       return [...prev, newTeamMember];
     });
 
     // If no active thread exists, automatically create a new thread
     if (!activeThreadId) {
-      const newTeam: Team = {
-        id: `team-${Date.now()}`,
-        name: `Team ${teams.length + 1}`,
-        members: [newTeamMember],
-        messages: [], // Start with empty messages for new team
-        createdAt: new Date(),
-        isActive: true
-      };
+      console.log('DEBUG - Creating new thread for synth:', employee.name);
       
-      setTeams(prev => [...prev, newTeam]);
-      setActiveThreadId(newTeam.id);
-      setMessages([]); // Clear messages when creating new team
+      // Create a proper thread in the database if user is authenticated
+      if (user) {
+        try {
+          const newThread = await directService.createThread(`Chat with ${employee.name}`);
+          console.log('DEBUG - Created new thread:', newThread);
+          setActiveThreadId(newThread.id);
+          setMessages([]); // Clear messages when creating new thread
+          
+          // Add the synth to the new thread
+          const isCustomSynth = customSynths.some(synth => synth.id === employeeId);
+          const synthReference: COAITeamSynthReference = {
+            synthId: employeeId,
+            isCustom: isCustomSynth,
+            metadata: {
+              model: employee.baseModel || 'gpt-4',
+              systemPrompt: employee.systemPrompt || '',
+              originalMemberId: employeeId,
+              name: employee.name,
+              role: employee.role,
+              profileImage: employee.profileImage
+            }
+          };
+          
+          await addSynthToThread(newThread.id, employeeId, synthReference);
+          console.log('✅ Synth added to new thread:', employee.name);
+        } catch (error) {
+          console.error('❌ Failed to create thread or add synth:', error);
+          // Fallback to local state only
+          const newTeam: Team = {
+            id: `temp-team-${Date.now()}`,
+            name: `Chat with ${employee.name}`,
+            members: [newTeamMember],
+            messages: [],
+            createdAt: new Date(),
+            isActive: true
+          };
+          
+          setTeams(prev => [...prev, newTeam]);
+          setActiveThreadId(newTeam.id);
+          setMessages([]);
+        }
+      } else {
+        // User not authenticated, use local state only
+        const newTeam: Team = {
+          id: `temp-team-${Date.now()}`,
+          name: `Chat with ${employee.name}`,
+          members: [newTeamMember],
+          messages: [],
+          createdAt: new Date(),
+          isActive: true
+        };
+        
+        setTeams(prev => [...prev, newTeam]);
+        setActiveThreadId(newTeam.id);
+        setMessages([]);
+      }
     } else {
       // Update the active team if it exists (for UI continuity)
       setTeams(prev => prev.map(team => 
         team.id === activeThreadId 
           ? { 
               ...team, 
-              members: team.members.some(m => m.id === employee.id) 
+              members: team.members.some(m => m.id === employeeId) 
                 ? team.members 
                 : [...team.members, newTeamMember],
               messages // Keep current messages
@@ -845,24 +1050,27 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
       if (user && activeThreadId) {
         try {
           // Determine if this is a custom synth or built-in
-          const isCustomSynth = customSynths.some(synth => synth.id === employee.id);
+          const isCustomSynth = customSynths.some(synth => synth.id === employeeId);
           
+          // Create a proper synth reference object
           const synthReference: COAITeamSynthReference = {
-            synthId: employee.id,
+            synthId: employeeId,
             isCustom: isCustomSynth,
             metadata: {
               model: employee.baseModel || 'gpt-4',
               systemPrompt: employee.systemPrompt || '',
-              originalMemberId: employee.id,
+              originalMemberId: employeeId,
               name: employee.name,
               role: employee.role,
               profileImage: employee.profileImage
             }
           };
+          
+          console.log('🔍 Adding synth to thread with ID:', employeeId, 'isCustom:', isCustomSynth);
 
           // If this is a custom synth with updated prompt/model, also update the synth data
           if (isCustomSynth) {
-            const existingCustomSynth = customSynths.find(synth => synth.id === employee.id);
+            const existingCustomSynth = customSynths.find(synth => synth.id === employeeId);
             if (existingCustomSynth && 
                 (existingCustomSynth.systemPrompt !== employee.systemPrompt || 
                  existingCustomSynth.baseModel !== employee.baseModel)) {
@@ -874,51 +1082,52 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
               };
               
               try {
-                const synthUpdateSuccess = await updateSynth(employee.id, updatedSynthData);
-                if (synthUpdateSuccess) {
-                  console.log('✅ Custom synth updated with new prompt/model before adding to thread:', employee.id);
-                } else {
-                  console.error('❌ Failed to update custom synth with new prompt/model');
-                }
+                await updateSynth(employeeId, updatedSynthData);
+                console.log('✅ Custom synth updated with new prompt/model before adding to thread:', employeeId);
               } catch (updateError) {
                 console.error('❌ Error updating custom synth with new prompt/model:', updateError);
               }
             }
           }
           
-          await addSynthToThread(isCustomSynth ? employee.id : null, synthReference);
+          // Use addSynthToThread instead of addSynthToTeam for threads
+          await addSynthToThread(activeThreadId, employeeId, synthReference);
           console.log('✅ Synth added to thread in database:', employee.name);
+          
+          // Immediately refetch thread synths to update the store
+          console.log('🔄 Refetching thread synths after adding single synth');
+          refetchThreadSynths();
         } catch (error) {
           console.error('❌ Failed to add synth to thread in database:', error);
         }
       }
     }
-  }, [activeThreadId, teams.length, setTeams, setActiveThreadId, setMessages, setTeamMembers, user, customSynths, addSynthToThread]);
+  }, [activeThreadId, teams.length, setTeams, setActiveThreadId, setMessages, setTeamMembers, user, customSynths, addSynthToThread, updateSynth]);
 
-  const handleQuickAddToThread = React.useCallback(async (employees: AIEmployee[]) => {
-    // Validate that employees is an array and filter out invalid entries
-    if (!Array.isArray(employees)) {
-      console.error('❌ employees is not an array:', employees);
+  const handleQuickAddToThread = React.useCallback(async (synths: AIEmployee[]) => {
+    // Validate that synths is an array and filter out invalid entries
+    if (!Array.isArray(synths)) {
+      console.error('❌ synths is not an array:', synths);
       return;
     }
     
-    const validEmployees = employees.filter(validateEmployee);
+    const validSynths = synths.filter(validateEmployee);
     
-    if (validEmployees.length === 0) {
-      console.error('❌ No valid employees found in:', employees);
+    if (validSynths.length === 0) {
+      console.error('❌ No valid synths found in:', synths);
       return;
     }
     
-    // Convert employees to team members
-    const newTeamMembers: TeamMember[] = validEmployees
-      .filter(employee => !teamMembers.some(member => member.id === employee.id))
-      .map(employee => ({
-        id: employee.id,
-        name: employee.name || 'Unknown Name',
-        role: employee.role || 'Unknown Role',
-        profileImage: employee.profileImage || '/default-avatar.png',
-        model: employee.baseModel || 'gpt-4',
-        systemPrompt: employee.systemPrompt || '',
+    // Convert synths to team members
+    const newTeamMembers: TeamMember[] = validSynths
+      .filter((synth: AIEmployee) => !teamMembers.some(member => member.id === synth.id))
+      .map((synth: AIEmployee) => ({
+        id: synth.id,
+        name: synth.name || 'Unknown Name',
+        role: synth.role || 'Unknown Role',
+        profileImage: synth.profileImage || '/default-avatar.png',
+        model: synth.baseModel || 'gpt-4',
+        systemPrompt: synth.systemPrompt || '',
       }));
 
     if (newTeamMembers.length === 0) {
@@ -939,9 +1148,12 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         isActive: true
       };
       
-      setTeams(prev => [...prev, newTeam]);
-      setActiveThreadId(newTeam.id);
-      setMessages([]); // Clear messages when creating new team
+              setTeams(prev => [...prev, newTeam]);
+        setActiveThreadId(newTeam.id);
+        setMessages([]); // Clear messages when creating new team
+        
+        // Also set the new team in the Zustand store
+        await switchThread(newTeam.id);
     } else {
       // Update the active team if it exists (for UI continuity)
       setTeams(prev => prev.map(team => 
@@ -957,80 +1169,118 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
       // Persist to database if user is authenticated
       if (user && activeThreadId) {
         try {
-          // Add each synth to the thread in the database
-          for (const employee of validEmployees) {
-            const isCustomSynth = customSynths.some(synth => synth.id === employee.id);
+          // Get current thread synths to check for duplicates
+          const currentThreadSynths = await getThreadSynths(activeThreadId);
+          const existingSynthIds = new Set(currentThreadSynths.map((ts: any) => ts.synth_id || ts.synthId).filter(Boolean));
+          
+          // Filter out synths that are already in the thread
+          const synthsToAdd = validSynths.filter((synth: AIEmployee) => {
+            let synthId: string;
             
+            if (typeof synth.id === 'string') {
+              // If it looks like a JSON string, try to parse it
+              if (synth.id.startsWith('{') || synth.id.startsWith('[')) {
+                try {
+                  const parsed = JSON.parse(synth.id);
+                  synthId = parsed.synthId || parsed.id || synth.id;
+                } catch (e) {
+                  synthId = synth.id;
+                }
+              } else {
+                synthId = synth.id;
+              }
+            } else if (synth.id && typeof synth.id === 'object') {
+              const objId = synth.id as any;
+              synthId = objId.synthId || objId.id || String(synth.id);
+            } else {
+              return false; // Skip invalid IDs
+            }
+            
+            // Clean up UUID format if needed
+            if (synthId.includes('-') && !synthId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+              synthId = synthId.replace(/['"{}]/g, '');
+            }
+            
+            return !existingSynthIds.has(synthId);
+          });
+          
+          if (synthsToAdd.length === 0) {
+            console.log('✅ All synths are already in the thread, skipping database operations');
+            return;
+          }
+          
+          // Add each new synth to the thread in the database
+          for (const synth of synthsToAdd) {
+            // Process ID similar to handleAddToThread
+            let synthId: string;
+            
+            if (typeof synth.id === 'string') {
+              // If it looks like a JSON string, try to parse it
+              if (synth.id.startsWith('{') || synth.id.startsWith('[')) {
+                try {
+                  const parsed = JSON.parse(synth.id);
+                  synthId = parsed.synthId || parsed.id || synth.id;
+                  console.log('🔍 Parsed JSON string ID to:', synthId);
+                } catch (e) {
+                  // If parsing fails, use the original string
+                  console.log('🔍 Failed to parse JSON string ID, using original:', synth.id);
+                  synthId = synth.id;
+                }
+              } else {
+                synthId = synth.id;
+              }
+            } else if (synth.id && typeof synth.id === 'object') {
+              // Handle case where ID is already an object
+              const objId = synth.id as any;
+              synthId = objId.synthId || objId.id || String(synth.id);
+              console.log('🔍 Extracted ID from object:', synthId);
+            } else {
+              // Skip this synth if ID can't be determined
+              console.error('❌ Could not determine valid synth ID:', synth);
+              continue;
+            }
+            
+            // Validate that synthId looks like a UUID if it's supposed to be one
+            if (synthId.includes('-') && !synthId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+              console.error('❌ Invalid UUID format:', synthId);
+              // Try to clean up the ID - remove quotes, braces, etc.
+              synthId = synthId.replace(/['"{}]/g, '');
+              console.log('🔍 Cleaned up ID:', synthId);
+            }
+            
+            // Check if this is a custom synth
+            const isCustomSynth = customSynths.some(customSynth => customSynth.id === synthId);
+            
+            // Create a proper synth reference object
             const synthReference: COAITeamSynthReference = {
-              synthId: employee.id,
+              synthId: synthId,
               isCustom: isCustomSynth,
               metadata: {
-                model: employee.baseModel || 'gpt-4',
-                systemPrompt: employee.systemPrompt || '',
-                originalMemberId: employee.id,
-                name: employee.name,
-                role: employee.role,
-                profileImage: employee.profileImage
+                model: synth.baseModel || 'gpt-4',
+                systemPrompt: synth.systemPrompt || '',
+                originalMemberId: synthId,
+                name: synth.name,
+                role: synth.role,
+                profileImage: synth.profileImage
               }
             };
             
-            await addSynthToThread(isCustomSynth ? employee.id : null, synthReference);
-          }
-          console.log('✅ Multiple synths added to thread in database:', validEmployees.map(e => e.name));
+                      // Add synth to thread in the database
+          await addSynthToThread(activeThreadId, synthId, synthReference);
+        }
+        console.log('✅ Multiple synths added to thread in database:', synthsToAdd.map((s: AIEmployee) => s.name));
+        
+        // Immediately refetch thread synths to update the store
+        console.log('🔄 Refetching thread synths after adding multiple synths');
+        refetchThreadSynths();
         } catch (error) {
           console.error('❌ Failed to add synths to thread in database:', error);
         }
       }
     }
-  }, [activeThreadId, teams.length, teamMembers, setTeams, setActiveThreadId, setMessages, setTeamMembers, user, customSynths, addSynthToThread]);
-  
-  const handleRemoveTeamMember = React.useCallback(async (id: string) => {
-    // Remove from local state first for instant UI feedback
-    setTeamMembers(prev => prev.filter(member => member.id !== id));
-    
-    // Clear selection if removing the selected team member
-    if (selectedTeamMember?.id === id) {
-      setSelectedTeamMember(null);
-      setIsProfileCollapsed(true);
-    }
-    
-    // Update the active team if it exists
-    if (activeThreadId) {
-      setTeams(prev => prev.map(team => 
-        team.id === activeThreadId 
-          ? { 
-              ...team, 
-              members: team.members.filter(member => member.id !== id),
-              messages // Keep current messages
-            }
-          : team
-      ));
-      
-      // Remove from database if user is authenticated
-      if (user) {
-        try {
-          // Find the thread synth to remove
-          const synthToRemove = threadSynths.find(ts => 
-            ts.synth?.id === id || ts.reference.synthId === id
-          );
-          
-          if (synthToRemove) {
-            await removeSynthFromThread(synthToRemove.threadSynthId);
-            console.log('✅ Synth removed from thread in database:', id);
-          }
-        } catch (error) {
-          console.error('❌ Failed to remove synth from thread in database:', error);
-        }
-      }
-    }
-  }, [activeThreadId, selectedTeamMember?.id, user, threadSynths, removeSynthFromThread]);
+  }, [activeThreadId, teams.length, teamMembers, setTeams, setActiveThreadId, setMessages, setTeamMembers, user, customSynths, addSynthToThread, getThreadSynths]);
 
-  const handleSelectTeamMember = React.useCallback((member: TeamMember) => {
-    setSelectedTeamMember(member);
-    setSelectedEmployee(null); // Clear employee selection
-    setIsProfileCollapsed(false);
-  }, []);
-
+  // Handler for updating team member
   const handleUpdateTeamMember = React.useCallback(async (member: TeamMember, updates: { systemPrompt?: string; model?: string }) => {
     const updatedMember = { 
       ...member, 
@@ -1075,26 +1325,22 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
               baseModel: updatedMember.model as any
             };
             
-            const synthUpdateSuccess = await updateSynth(member.id, updatedSynthData);
-            if (synthUpdateSuccess) {
+            try {
+              await updateSynth(member.id, updatedSynthData);
               console.log('✅ Custom synth data updated in Supabase:', member.id);
-            } else {
-              console.error('❌ Failed to update custom synth data in Supabase');
+            } catch (error) {
+              console.error('❌ Failed to update custom synth data in Supabase:', error);
             }
           }
         }
 
-        // Find the thread synth to update its reference metadata
-        const threadSynth = threadSynths.find(ts => 
-          ts.synth?.id === member.id || ts.reference.synthId === member.id
-        );
+        // Check if synth exists in current thread and update its reference
+        const threadSynth = threadSynths.find(synth => synth.id === member.id);
         
         if (threadSynth) {
           // Update the synth reference metadata in the thread
-          const updatedReference: COAITeamSynthReference = {
-            ...threadSynth.reference,
+          const updatedReference: Partial<COAITeamSynthReference> = {
             metadata: {
-              ...threadSynth.reference.metadata,
               model: updatedMember.model,
               systemPrompt: updatedMember.systemPrompt,
               name: updatedMember.name,
@@ -1103,11 +1349,11 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
             }
           };
           
-          const referenceUpdateSuccess = await updateThreadSynthReference(threadSynth.threadSynthId, updatedReference);
-          if (referenceUpdateSuccess) {
+          try {
+            await updateTeamSynthReference(activeThreadId, member.id, updatedReference);
             console.log('✅ Thread synth reference updated in Supabase:', member.id);
-          } else {
-            console.error('❌ Failed to update thread synth reference in Supabase');
+          } catch (error) {
+            console.error('❌ Failed to update thread synth reference in Supabase:', error);
           }
         }
       } catch (error) {
@@ -1115,8 +1361,8 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         // Keep the local updates even if Supabase update fails
       }
     }
-  }, [activeThreadId, user, customSynths, threadSynths, updateSynth, updateThreadSynthReference]);
-  
+  }, [activeThreadId, user, customSynths, threadSynths, updateSynth, updateTeamSynthReference]);
+
   // Original handleSendMessage for fallback
   const originalHandleSendMessage = React.useCallback(async (displayContent: string, fullContent: string, attachedImage?: any) => {
     if (teamMembers.length === 0) return;
@@ -1154,11 +1400,12 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
     
     setMessages(prev => [...prev, newUserMessage]);
     
-    // Save user message immediately to Supabase
-    if (user && adapter && activeThreadId) {
+    // Save user message immediately via directService
+    if (user && activeThreadId) {
       try {
-        await adapter.createMessage(newUserMessage, activeThreadId);
-        console.log('💾 User message saved to Supabase:', newUserMessage.id);
+        const messageData = directService.convertChatMessageToMessageData(newUserMessage);
+        await directService.createMessage(activeThreadId, messageData);
+        console.log('💾 User message saved via directService:', newUserMessage.id);
       } catch (error) {
         console.error('❌ Failed to save user message:', error);
       }
@@ -1233,8 +1480,8 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
     // Process active team members sequentially with human-like delays
     for (let i = 0; i < activeTeamMembers.length; i++) {
       const member = activeTeamMembers[i];
-      // Check both employees and customSynths arrays
-      const employee = employees.find(emp => emp.id === member.id) || customSynths.find(synth => synth.id === member.id);
+      // Find the synth data from customSynths
+      const employee = customSynths.find(synth => synth.id === member.id);
       if (!employee) continue;
 
       // Add delay between team member responses (except for the first one)
@@ -1403,11 +1650,12 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
               : msg
           ));
           
-          // Save AI message immediately to Supabase
-          if (user && adapter && activeThreadId) {
+          // Save AI message immediately via directService
+          if (user && activeThreadId) {
             try {
-              await adapter.createMessage(completedMessage, activeThreadId);
-              console.log('💾 AI message saved to Supabase:', completedMessage.id);
+              const messageData = directService.convertChatMessageToMessageData(completedMessage);
+              await directService.createMessage(activeThreadId, messageData);
+              console.log('💾 AI message saved via directService:', completedMessage.id);
             } catch (error) {
               console.error('❌ Failed to save AI message:', error);
             }
@@ -1425,7 +1673,7 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
 
     // Ensure loading state is cleared when all processing is done
     setIsWaitingForStream(false);
-  }, [messages, teamMembers, employees, customSynths, isApiKeyValid, openaiApiKey]);
+  }, [messages, teamMembers, customSynths, isApiKeyValid, openaiApiKey]);
 
 
 
@@ -1446,13 +1694,10 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
     console.log('🚨 [DOCUMENT DEBUG] Display content contains DOCUMENT_CONTEXT:', displayContent.includes('<!-- DOCUMENT_CONTEXT:'));
     console.log('🚨 [DOCUMENT DEBUG] Full content contains DOCUMENT_CONTEXT:', fullContent.includes('<!-- DOCUMENT_CONTEXT:'));
     
-    // Debug: Log the combined employees array being passed to dynamics
-    const combinedEmployees = [...employees, ...customSynths];
-    console.log(`🔍 [EMPLOYEES DEBUG] Total employees being passed to dynamics: ${combinedEmployees.length}`);
-    console.log(`🔍 [EMPLOYEES DEBUG] Base employees: ${employees.length}`);
-    console.log(`🔍 [EMPLOYEES DEBUG] Custom synths: ${customSynths.length}`);
-    console.log(`🔍 [EMPLOYEES DEBUG] Custom synths IDs:`, customSynths.map(s => ({ id: s.id, name: s.name })));
-    console.log(`🔍 [EMPLOYEES DEBUG] Team member IDs:`, teamMembers.map(m => ({ id: m.id, name: m.name })));
+    // Debug: Log the synths being used
+    console.log(`🔍 [SYNTHS DEBUG] Total custom synths: ${customSynths.length}`);
+    console.log(`🔍 [SYNTHS DEBUG] Custom synths IDs:`, customSynths.map(s => ({ id: s.id, name: s.name })));
+    console.log(`🔍 [SYNTHS DEBUG] Team member IDs:`, teamMembers.map(m => ({ id: m.id, name: m.name })));
     
     // Use sequential message handling
     console.log('🔄 Using sequential message handling');
@@ -1461,7 +1706,6 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
     // Messages are saved immediately when created - no batch saving needed
   }, [
     teamMembers,
-    employees,
     customSynths,
     messages,
     openaiApiKey,
@@ -1526,9 +1770,9 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
     // Process team members sequentially with human-like delays
     for (let i = 0; i < activeTeamMembers.length; i++) {
       const member = activeTeamMembers[i];
-      // Check both employees and customSynths arrays
-      const employee = employees.find(emp => emp.id === member.id) || customSynths.find(synth => synth.id === member.id);
-      if (!employee) continue;
+      // Find the synth data from customSynths
+      const synth = customSynths.find(s => s.id === member.id);
+      if (!synth) continue;
 
       // Add delay between team member responses (except for the first one)
       if (i > 0) {
@@ -1536,7 +1780,7 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         await sleep(betweenDelay);
       }
 
-      // Prepare message ID for this AI employee, but don't add to UI yet
+      // Prepare message ID for this AI synth, but don't add to UI yet
       const messageId = `${Date.now()}-continue-${member.id}-${i}`;
       let messageAddedToUI = false;
       
@@ -1548,20 +1792,20 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         // Use original system prompt for AI continuation
         const continuationPrompt = member.systemPrompt ? 
           `${member.systemPrompt}\n\nCONTINUATION CONTEXT: The team is naturally continuing their conversation. Build upon what has been discussed and share your perspective on how to take this further. Be authentic to your role and personality.` :
-          `You are a ${employee.role}. The team is continuing their conversation naturally. Build upon what has been discussed and add your unique perspective.`;
+          `You are a ${synth.role}. The team is continuing their conversation naturally. Build upon what has been discussed and add your unique perspective.`;
 
         // 🚨 FRONTEND DEBUG: Track AI continuation calls
         const continuationCallTimestamp = new Date().toISOString();
-        console.log(`🚨 [AI CONTINUE] ${continuationCallTimestamp} - Making API call for ${employee.name} (${i + 1}/${activeTeamMembers.length})`);
+        console.log(`🚨 [AI CONTINUE] ${continuationCallTimestamp} - Making API call for ${synth.name} (${i + 1}/${activeTeamMembers.length})`);
         console.log(`🚨 [AI CONTINUE] Chat history length: ${chatHistory.length} messages`);
         console.log(`🚨 [AI CONTINUE] Previous AI responses in history: ${chatHistory.filter(msg => msg.role === 'assistant').length}`);
         
         const response = await streamChat(
           chatHistory,
-          employee.role,
+          synth.role,
           member.model,
           continuationPrompt,
-          employee.name,
+          synth.name,
           openaiApiKey
         );
 
@@ -1620,10 +1864,10 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
                       timestamp: new Date(),
                       isLoading: true,
                       aiEmployee: {
-                        id: employee.id,
-                        name: employee.name,
-                        role: employee.role,
-                        profileImage: employee.profileImage,
+                        id: synth.id,
+                        name: synth.name,
+                        role: synth.role,
+                        profileImage: synth.profileImage,
                         model: member.model,
                       },
                     };
@@ -1677,10 +1921,10 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
             timestamp: new Date(),
             isLoading: false,
             aiEmployee: {
-              id: employee.id,
-              name: employee.name,
-              role: employee.role,
-              profileImage: employee.profileImage,
+              id: synth.id,
+              name: synth.name,
+              role: synth.role,
+              profileImage: synth.profileImage,
               model: member.model,
             },
           };
@@ -1691,11 +1935,12 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
               : msg
           ));
           
-          // Save AI message immediately to Supabase
-          if (user && adapter && activeThreadId) {
+          // Save AI message immediately via directService
+          if (user && activeThreadId) {
             try {
-              await adapter.createMessage(completedMessage, activeThreadId);
-              console.log('💾 AI continuation message saved to Supabase:', completedMessage.id);
+              const messageData = directService.convertChatMessageToMessageData(completedMessage);
+              await directService.createMessage(activeThreadId, messageData);
+              console.log('💾 AI continuation message saved via directService:', completedMessage.id);
             } catch (error) {
               console.error('❌ Failed to save AI continuation message:', error);
             }
@@ -1703,7 +1948,7 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         }
 
       } catch (error) {
-        console.error(`❌ [AI Continue] [${employee.name}] Error in chat stream:`, error);
+        console.error(`❌ [AI Continue] [${synth.name}] Error in chat stream:`, error);
         // Remove the message on error (only if it was added to UI)
         if (messageAddedToUI) {
           setMessages(prev => prev.filter(msg => msg.id !== messageId));
@@ -1713,7 +1958,7 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
 
     // Ensure loading state is cleared when all processing is done
     setIsWaitingForStream(false);
-  }, [messages, teamMembers, employees, customSynths, isApiKeyValid, openaiApiKey]);
+  }, [messages, teamMembers, customSynths, isApiKeyValid, openaiApiKey]);
 
   // Utility function to randomize team member order
   const randomizeTeamOrder = React.useCallback((members: TeamMember[]): TeamMember[] => {
@@ -1727,33 +1972,45 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
 
   // Team management handlers
   const handleSelectTeam = React.useCallback(async (teamId: string) => {
-    // Switch to the new thread/chat (no need to save - messages are saved immediately)
-    if (adapter) {
-      try {
-        // Since we're using threads as "teams" in the UI, teamId is actually threadId
-        await adapter.setActiveThreadId(teamId);
-        setActiveThreadId(teamId);
-        
+    // Switch to the new thread/chat
+    try {
+      console.log('🔍 DEBUG: handleSelectTeam called with teamId:', teamId);
+      
+      // Since we're using threads as "teams" in the UI, teamId is actually threadId
+      await directService.setActiveThreadId(teamId);
+      setActiveThreadId(teamId);
+      
+      // Also set the active thread in the Zustand store
+      await switchThread(teamId);
+      
+      // Load messages for the selected thread
+      if (user) {
+        try {
+          const threadMessages = await directService.fetchMessages(teamId);
+          const convertedMessages = threadMessages.map(msg => directService.convertMessageDataToChatMessage(msg));
+          setMessages(convertedMessages);
+          
+          // Explicitly trigger thread synths loading
+          console.log('🔍 DEBUG: Explicitly loading thread synths for:', teamId);
+          refetchThreadSynths();
+        } catch (error) {
+          console.error('Failed to load thread messages:', error);
+          setMessages([]);
+        }
+      } else {
+        // For non-authenticated users, just switch locally
         const selectedThread = teams.find(team => team.id === teamId);
         if (selectedThread) {
+          setTeamMembers(selectedThread.members);
           setMessages(selectedThread.messages);
-          // Don't set team members here - let the thread synths effect handle it
         }
-        
-        console.log('✅ Switched to thread:', teamId);
-      } catch (error) {
-        console.error('Failed to switch thread:', error);
       }
-    } else {
-      // For non-authenticated users, just switch locally
-      setActiveThreadId(teamId);
-      const selectedThread = teams.find(team => team.id === teamId);
-      if (selectedThread) {
-        setTeamMembers(selectedThread.members);
-        setMessages(selectedThread.messages);
-      }
+      
+      console.log('✅ Switched to thread:', teamId);
+    } catch (error) {
+      console.error('Failed to switch thread:', error);
     }
-  }, [teams, adapter]);
+  }, [teams, user, refetchThreadSynths]);
 
   const handleEditTeamName = React.useCallback(async (teamId: string, newName: string) => {
     // Update local state immediately for instant UI feedback
@@ -1765,24 +2022,24 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
       return updatedTeams;
     });
     
-    // Persist to Supabase asynchronously
-    if (user && adapter) {
+    // Persist to Supabase asynchronously via directService
+    if (user) {
       try {
-        await adapter.updateThread(teamId, { title: newName });
+        await directService.updateThread(teamId, { title: newName });
         console.log('✅ Thread name updated in Supabase:', teamId, newName);
       } catch (error) {
         console.error('❌ Failed to update thread name in Supabase:', error);
         // Could add user notification here if needed
       }
     }
-  }, [user, adapter]);
+  }, [user]);
 
   // Create a new CHAT/THREAD 
   const handleCreateNewChat = React.useCallback(async () => {
     // Prevent multiple clicks
     if (isWaitingForStream) return;
     
-    if (user && adapter) {
+    if (user) {
       try {
         // Generate optimistic thread data and add to UI immediately
         const optimisticThreadId = `thread-${Date.now()}`;
@@ -1791,7 +2048,7 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         const newThreadAsTeam: Team = {
           id: optimisticThreadId,
           name: optimisticThreadTitle,
-          members: [...teamMembers], // Copy current team members
+          members: [], // Start with empty synths list for new thread
           messages: [], // Start fresh
           createdAt: new Date(),
           isActive: true,
@@ -1804,17 +2061,21 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
           return updatedTeams;
         });
         setActiveThreadId(optimisticThreadId);
+        setTeamMembers([]); // Clear team members for new thread
         setMessages([]);
         
-        // Create thread in Supabase asynchronously
+        // Also set the optimistic thread in the Zustand store
+        await switchThread(optimisticThreadId);
+        
+        // Create thread in Supabase asynchronously via directService
         try {
-          const realThreadId = await adapter.createThread(optimisticThreadTitle);
+          const realThread = await directService.createThread(optimisticThreadTitle);
           
           // Update with real thread ID from Supabase atomically
           setTeams(prev => {
             const updatedTeams = prev.map(thread => 
               thread.id === optimisticThreadId 
-                ? { ...thread, id: realThreadId }
+                ? { ...thread, id: realThread.id }
                 : thread
             );
             saveThreadsCache(updatedTeams); // Update cache with real ID
@@ -1822,52 +2083,38 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
           });
           
           // Update active thread ID to real ID
-          setActiveThreadId(realThreadId);
+          setActiveThreadId(realThread.id);
           
-          // Also update Supabase active thread
-          await adapter.setActiveThreadId(realThreadId);
+          // Also update Supabase active thread via directService
+          await directService.setActiveThreadId(realThread.id);
           
-          // If we have team members, save them to the thread
-          if (teamMembers.length > 0) {
-            try {
-              for (const member of teamMembers) {
-                const isCustomSynth = customSynths.some(synth => synth.id === member.id);
-                
-                const synthReference: COAITeamSynthReference = {
-                  synthId: member.id,
-                  isCustom: isCustomSynth,
-                  metadata: {
-                    model: member.model,
-                    systemPrompt: member.systemPrompt,
-                    originalMemberId: member.id,
-                    name: member.name,
-                    role: member.role,
-                    profileImage: member.profileImage
-                  }
-                };
-                
-                await addSynthToThread(isCustomSynth ? member.id : null, synthReference);
-              }
-              console.log('✅ Team members saved to new thread:', teamMembers.length);
-            } catch (error) {
-              console.error('❌ Failed to save team members to new thread:', error);
-            }
-          }
+          // Update the Zustand store with the real thread ID
+          await switchThread(realThread.id);
           
-          console.log('✅ Thread created in Supabase:', realThreadId);
-          console.log('🔍 DEBUG: Thread state after creation - optimistic:', optimisticThreadId, '-> real:', realThreadId);
+          // New threads start with no synths - users can add them manually
+          
+          console.log('✅ Thread created in Supabase:', realThread.id);
+          console.log('🔍 DEBUG: Thread state after creation - optimistic:', optimisticThreadId, '-> real:', realThread.id);
           
           // Trigger a fresh data load to ensure sync
           setTimeout(async () => {
             try {
-              const freshThreads = await adapter.getThreads();
+              const freshThreads = await directService.fetchThreads();
               setTeams(prev => {
                 // Only update if we don't have newer optimistic updates
                 const hasNewerOptimistic = prev.some(t => t.id.startsWith('thread-') && t.id !== optimisticThreadId);
                 if (!hasNewerOptimistic) {
                   console.log('🔄 Refreshing with latest Supabase data after thread creation');
-                  saveThreadsCache(freshThreads);
-                  return freshThreads;
+                  const threadsAsTeams = freshThreads.map(thread => ({
+                    id: thread.id,
+                    name: thread.title,
+                    members: [], // Will be populated when thread is selected
+                    messages: [], // Will be populated when thread is selected
+                    createdAt: thread.createdAt,
+                    isActive: thread.isActive
+                  }));
+                  saveThreadsCache(threadsAsTeams);
+                  return threadsAsTeams;
                 }
                 return prev;
               });
@@ -1881,30 +2128,70 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
           // Keep optimistic data - thread will be created when first message is sent
         }
         
-        console.log('💬 New chat thread created instantly with team members:', teamMembers.length);
+        console.log('💬 New chat thread created instantly (empty - no synths copied)');
       } catch (error) {
         console.error('Failed to create new chat:', error);
       }
     } else {
       // For unauthenticated users, just clear messages locally
+      setTeamMembers([]); // Clear team members for new thread
       setMessages([]);
-      console.log('💬 Created new local chat with team members:', teamMembers.length);
+      console.log('💬 Created new local chat (empty - no synths copied)');
     }
-  }, [user, adapter, teamMembers, teams.length, isWaitingForStream, saveThreadsCache]);
+  }, [user, teamMembers, teams.length, isWaitingForStream, saveThreadsCache, customSynths, addSynthToThread]);
 
 
 
-  const handleClearChat = React.useCallback(() => {
-    // Clear messages from UI
-    setMessages([]);
-    
-    // Clear messages from active team
-    if (activeThreadId) {
+  const handleClearChat = React.useCallback(async () => {
+    if (!activeThreadId) {
+      console.log('No active thread to clear');
+      return;
+    }
+
+    try {
+      // Get all messages for the current thread from the Zustand store
+      const { getState } = await import('../../stores');
+      const state = getState();
+      
+      // Get message IDs for the active thread
+      const messageIds = state.relationships.threadMessages[activeThreadId] || [];
+      
+      if (messageIds.length === 0) {
+        console.log('No messages to clear in thread:', activeThreadId);
+        return;
+      }
+
+      console.log(`🗑️ Clearing ${messageIds.length} messages from thread:`, activeThreadId);
+
+      // Delete all messages from the database and store
+      const deletePromises = messageIds.map(messageId => 
+        state.deleteMessage(messageId)
+      );
+
+      await Promise.all(deletePromises);
+
+      // Clear local UI state as well (for legacy compatibility)
+      setMessages([]);
+      
+      // Clear messages from active team in local state
       setTeams(prev => prev.map(team => 
         team.id === activeThreadId 
           ? { ...team, messages: [] }
           : team
       ));
+
+      console.log('✅ Successfully cleared all messages from thread:', activeThreadId);
+    } catch (error) {
+      console.error('❌ Failed to clear chat messages:', error);
+      // Still clear the UI even if database deletion fails
+      setMessages([]);
+      if (activeThreadId) {
+        setTeams(prev => prev.map(team => 
+          team.id === activeThreadId 
+            ? { ...team, messages: [] }
+            : team
+        ));
+      }
     }
   }, [activeThreadId, setMessages, setTeams]);
 
@@ -1925,10 +2212,11 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         setTeamMembers(remainingTeams[0].members);
         setMessages(remainingTeams[0].messages);
         
-        // Update active thread in Supabase
-        if (user && adapter) {
+        // Update active thread in Supabase and Zustand store
+        if (user) {
           try {
-                         await adapter.setActiveThreadId(remainingTeams[0].id);
+            await directService.setActiveThreadId(remainingTeams[0].id);
+            await switchThread(remainingTeams[0].id);
           } catch (error) {
             console.error('❌ Failed to update active thread:', error);
           }
@@ -1939,10 +2227,11 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         setTeamMembers([]);
         setMessages([]);
         
-        // Clear active thread in Supabase
-        if (user && adapter) {
+        // Clear active thread in Supabase and Zustand store
+        if (user) {
           try {
-                         await adapter.setActiveThreadId(null);
+            await directService.setActiveThreadId(null);
+            await switchThread(null);
           } catch (error) {
             console.error('❌ Failed to clear active thread:', error);
           }
@@ -1951,16 +2240,16 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
     }
     
     // Delete thread from Supabase
-    if (user && adapter) {
+    if (user) {
       try {
-        await adapter.deleteThread(teamId);
+        await directService.deleteThread(teamId);
         console.log('✅ Thread deleted from Supabase:', teamId);
       } catch (error) {
         console.error('❌ Failed to delete thread from Supabase:', error);
         // Could add user notification here if needed
       }
     }
-  }, [teams, activeThreadId, setActiveThreadId, setTeamMembers, setMessages, setTeams, user, adapter, saveThreadsCache]);
+  }, [teams, activeThreadId, setActiveThreadId, setTeamMembers, setMessages, setTeams, user, saveThreadsCache]);
 
 
 
@@ -2040,8 +2329,6 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
       <Header 
         isBrowserCollapsed={isBrowserCollapsed}
         onToggleBrowser={() => setIsBrowserCollapsed(!isBrowserCollapsed)}
-        onClearChat={handleClearChat}
-        hasMessages={messages.length > 0}
         isLoadingData={isLoadingData}
       />
       
@@ -2049,15 +2336,13 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         {!isBrowserCollapsed && (
           <div className="w-[30%] flex-shrink-0">
             <BrowserPanel
-              employees={employees}
               customSynths={customSynths}
               onSelectEmployee={handleSelectEmployee}
               onQuickAdd={handleAddToThread}
               onQuickAddTeam={handleQuickAddToThread}
-              onSelectTeam={handleSelectPremadeTeam}
+              onSelectTeam={handleSelectCustomTeam}
               onSelectCustomTeam={handleSelectCustomTeam}
               onAddNewTeam={handleAddNewTeam}
-
               onAddNewSynth={handleAddNewSynth}
               onEditSynth={handleEditSynth}
               onDeleteSynth={handleDeleteSynth}
@@ -2073,8 +2358,14 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
           <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto md:w-80 lg:w-96 md:flex-shrink-0 bg-white dark:bg-neutral-900">
             {selectedPremadeTeam ? (
               <TeamProfile
-                team={selectedPremadeTeam}
-                allEmployees={employees}
+                team={{
+                  id: selectedPremadeTeam.id,
+                  name: selectedPremadeTeam.team_data.name,
+                  selectedSynths: [], // COAITeam doesn't have selectedSynths, would need to fetch from team-synths
+                  createdAt: new Date(selectedPremadeTeam.created_at),
+                  description: selectedPremadeTeam.team_data.description,
+                  teamImage: selectedPremadeTeam.team_data.teamImage
+                }}
                 onBack={() => {
                   setIsProfileCollapsed(true);
                   setSelectedPremadeTeam(null);
@@ -2124,13 +2415,14 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
             onSendMessage={handleSendMessage}
             onAIContinue={handleAIContinue}
             onRemoveMessage={handleRemoveMessage}
-            employees={[...employees, ...customSynths]}
-            teams={teams}
+            employees={customSynths}
+            threads={teams}
             activeThreadId={activeThreadId}
-            onSelectTeam={handleSelectTeam}
-            onEditTeamName={handleEditTeamName}
+            onSelectThread={handleSelectTeam}
+            onEditThreadName={handleEditTeamName}
             onCreateChat={handleCreateNewChat}
-            onDeleteTeam={handleDeleteTeam}
+            onDeleteThread={handleDeleteTeam}
+            onClearChat={handleClearChat}
             isWaitingForStream={isWaitingForStream}
             globalSpacebarCount={globalSpacebarCount}
           />
@@ -2142,7 +2434,7 @@ const Layout: React.FC<LayoutProps> = ({ employees, initialMessages }) => {
         isOpen={isEditTeamModalOpen}
         onClose={handleCloseEditTeamModal}
         onSave={handleSaveEditedTeam}
-        availableSynths={employees}
+        availableSynths={customSynths}
         customSynths={customSynths}
         team={teamToEdit}
       />

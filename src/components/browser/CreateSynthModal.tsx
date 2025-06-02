@@ -11,6 +11,7 @@ import { AIEmployee } from '@/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { generateAISynth } from '@/lib/api-utils';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface CreateSynthModalProps {
   isOpen: boolean;
@@ -39,6 +40,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
   const [activeTab, setActiveTab] = useState<'manual' | 'ai'>('ai');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedSynth, setGeneratedSynth] = useState<GeneratedSynth | null>(null);
+  const [isPublic, setIsPublic] = useState(true);
   
   // Manual form state
   const [formData, setFormData] = useState({
@@ -135,6 +137,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
       profileImage: generatedSynth.profileImage,
       bio: generatedSynth.bio,
       experience: generatedSynth.experience,
+      isPublic,
     };
 
     onSave(newSynth);
@@ -155,6 +158,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
       systemPrompt: formData.systemPrompt,
       baseModel: formData.baseModel as AIEmployee['baseModel'],
       profileImage: formData.profileImage || '/images/default-avatar.png',
+      isPublic,
     };
 
     onSave(newSynth);
@@ -176,6 +180,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
     setAverageAge(35);
     setGeneratedSynth(null);
     setActiveTab('ai');
+    setIsPublic(true);
     onClose();
   };
 
@@ -334,6 +339,20 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
                     </CardContent>
                   </Card>
                 )}
+
+                <div className="flex items-center space-x-2 mt-4">
+                  <Checkbox 
+                    id="ai-is-public" 
+                    checked={isPublic} 
+                    onCheckedChange={(checked) => setIsPublic(checked as boolean)}
+                  />
+                  <Label htmlFor="ai-is-public" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Make this synth public
+                  </Label>
+                  <p className="text-xs text-neutral-500 ml-2">
+                    Public synths can be seen and used by other users
+                  </p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -450,6 +469,20 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
               />
               <p className="text-xs text-neutral-500">
                 This prompt will define how the synth behaves and responds in conversations.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="manual-is-public" 
+                checked={isPublic} 
+                onCheckedChange={(checked) => setIsPublic(checked as boolean)}
+              />
+              <Label htmlFor="manual-is-public" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                Make this synth public
+              </Label>
+              <p className="text-xs text-neutral-500 ml-2">
+                Public synths can be seen and used by other users
               </p>
             </div>
           </TabsContent>

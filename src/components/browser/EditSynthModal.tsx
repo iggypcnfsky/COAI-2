@@ -5,8 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Upload, X } from 'lucide-react';
+import { Upload, X, RefreshCw, Loader2 } from 'lucide-react';
 import { AIEmployee } from '@/types';
+import { Checkbox } from '@/components/ui/checkbox';
+import { generateSynthImage } from '@/lib/api-utils';
 
 interface EditSynthModalProps {
   isOpen: boolean;
@@ -30,6 +32,8 @@ const EditSynthModal: React.FC<EditSynthModalProps> = ({
     profileImage: '',
   });
   const [imagePreview, setImagePreview] = useState<string>('');
+  const [isPublic, setIsPublic] = useState(true);
+  const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
 
   // Populate form when synth changes
   useEffect(() => {
@@ -43,6 +47,8 @@ const EditSynthModal: React.FC<EditSynthModalProps> = ({
         profileImage: synth.profileImage,
       });
       setImagePreview(synth.profileImage);
+      // Set isPublic based on synth's property or default to true
+      setIsPublic(synth.isPublic !== undefined ? synth.isPublic : true);
     }
   }, [synth]);
 
@@ -77,6 +83,39 @@ const EditSynthModal: React.FC<EditSynthModalProps> = ({
     }));
   };
 
+  const handleRegenerateImage = async () => {
+    if (!synth) return;
+    
+    try {
+      setIsRegeneratingImage(true);
+      
+      // Call the edge function to generate a new image
+      const newImage = await generateSynthImage({
+        name: formData.name,
+        age: parseInt(formData.age) || 25,
+        role: formData.role,
+        systemPrompt: formData.systemPrompt,
+        baseModel: formData.baseModel as AIEmployee['baseModel'],
+        profileImage: '', // Don't send the existing image
+        bio: synth.bio,
+      });
+      
+      // Update form and preview with the new image
+      setImagePreview(newImage);
+      setFormData(prev => ({
+        ...prev,
+        profileImage: newImage
+      }));
+      
+      console.log('✅ Image regenerated successfully');
+    } catch (error) {
+      console.error('❌ Failed to regenerate image:', error);
+      alert('Failed to regenerate image. Please try again.');
+    } finally {
+      setIsRegeneratingImage(false);
+    }
+  };
+
   const handleSave = () => {
     if (!formData.name || !formData.role || !formData.systemPrompt || !formData.baseModel) {
       alert('Please fill in all required fields');
@@ -96,6 +135,7 @@ const EditSynthModal: React.FC<EditSynthModalProps> = ({
       systemPrompt: formData.systemPrompt,
       baseModel: formData.baseModel as AIEmployee['baseModel'],
       profileImage: formData.profileImage || '/images/default-avatar.png',
+      isPublic,
     };
 
     onSave(updatedSynth);
@@ -112,6 +152,7 @@ const EditSynthModal: React.FC<EditSynthModalProps> = ({
       profileImage: '',
     });
     setImagePreview('');
+    setIsPublic(true);
     onClose();
   };
 
@@ -148,21 +189,46 @@ const EditSynthModal: React.FC<EditSynthModalProps> = ({
                   <Upload className="w-6 h-6 text-neutral-400" />
                 </div>
               )}
-              <div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                  id="edit-image-upload"
-                />
-                <Label htmlFor="edit-image-upload" className="cursor-pointer">
-                  <Button variant="outline" size="sm" asChild>
-                    <span>Upload Image</span>
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    id="edit-image-upload"
+                  />
+                  <Label htmlFor="edit-image-upload" className="cursor-pointer">
+                    <Button variant="outline" size="sm" asChild>
+                      <span>Upload Image</span>
+                    </Button>
+                  </Label>
+                  
+                  {/* Regenerate Image Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRegenerateImage}
+                    disabled={isRegeneratingImage || !formData.name || !formData.role}
+                    className="flex items-center gap-1"
+                  >
+                    {isRegeneratingImage ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>Generating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-3 w-3" />
+                        <span>Regenerate</span>
+                      </>
+                    )}
                   </Button>
-                </Label>
-                <p className="text-xs text-neutral-500 mt-1">
-                  Recommended: 400x400px or larger
+                </div>
+                <p className="text-xs text-neutral-500">
+                  {isRegeneratingImage 
+                    ? 'Generating new AI image, please wait...' 
+                    : 'Recommended: 400x400px or larger. Or regenerate using AI.'}
                 </p>
               </div>
             </div>
@@ -235,6 +301,21 @@ const EditSynthModal: React.FC<EditSynthModalProps> = ({
             />
             <p className="text-xs text-neutral-500">
               This prompt will define how the synth behaves and responds in conversations.
+            </p>
+          </div>
+
+          {/* Privacy Toggle */}
+          <div className="flex items-center space-x-2">
+            <Checkbox 
+              id="edit-is-public" 
+              checked={isPublic} 
+              onCheckedChange={(checked) => setIsPublic(checked as boolean)}
+            />
+            <Label htmlFor="edit-is-public" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              Make this synth public
+            </Label>
+            <p className="text-xs text-neutral-500 ml-2">
+              Public synths can be seen and used by other users
             </p>
           </div>
         </div>

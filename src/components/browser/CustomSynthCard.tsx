@@ -1,9 +1,9 @@
-import React from 'react';
-import { Edit, Trash2, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Edit, Trash2, Loader2, PlusCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { PlusCircle } from 'lucide-react';
 import { AIEmployee } from '@/types';
+
 
 interface CustomSynthCardProps {
   employee: AIEmployee;
@@ -11,6 +11,7 @@ interface CustomSynthCardProps {
   onQuickAdd: (employee: AIEmployee) => void;
   onEdit?: (employee: AIEmployee) => void;
   onDelete?: (employeeId: string) => void;
+  onUpdateSynth?: (updatedSynth: AIEmployee) => void;
 }
 
 const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
@@ -19,11 +20,10 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
   onQuickAdd,
   onEdit,
   onDelete,
+
 }) => {
-  const [isDragging, setIsDragging] = React.useState(false);
-  const [isHovered, setIsHovered] = React.useState(false);
-  const [videoLoaded, setVideoLoaded] = React.useState(false);
-  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('application/json', JSON.stringify(employee));
@@ -66,35 +66,6 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
     setIsDragging(false);
   };
 
-  const handleMouseEnter = async () => {
-    setIsHovered(true);
-    if (videoRef.current && videoLoaded) {
-      try {
-        videoRef.current.currentTime = 0;
-        await videoRef.current.play();
-      } catch (error) {
-        console.log('Video play failed:', error);
-      }
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
-  };
-
-  const handleVideoLoaded = () => {
-    setVideoLoaded(true);
-  };
-
-  const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
-    console.log('Video failed to load:', e);
-    setVideoLoaded(false);
-  };
-
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
     onQuickAdd(employee);
@@ -114,8 +85,7 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
     }
   };
 
-  // Generate video path based on employee name
-  const videoPath = `/videos/${employee.name.toLowerCase()}.mp4`;
+
 
   return (
     <Card 
@@ -126,8 +96,6 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       {/* Full background image */}
       <div 
@@ -147,24 +115,6 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
           </div>
         </div>
       )}
-
-      {/* Video element - always present but hidden when not hovered */}
-      <div className={`absolute inset-0 z-10 transition-opacity duration-300 ${isHovered && videoLoaded ? 'opacity-100' : 'opacity-0'}`}>
-        <video
-          ref={videoRef}
-          className="w-full h-full object-cover"
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          onLoadedData={handleVideoLoaded}
-          onError={handleVideoError}
-        >
-          <source src={videoPath} type="video/mp4" />
-        </video>
-        {/* Dark overlay for video as well */}
-        <div className="absolute inset-0 bg-black/20" />
-      </div>
       
       {/* Content overlay */}
       <div className="relative h-full flex flex-col justify-between p-3 text-white z-20">
@@ -174,6 +124,8 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
             {employee.name}
           </h3>
           <div className="flex gap-2 relative z-10">
+            {/* Image regeneration button - removed per request */}
+            
             {/* Edit button for custom synths */}
             {onEdit && (
               <Button

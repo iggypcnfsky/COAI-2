@@ -1,5 +1,8 @@
 // API utility functions for the application
 
+import { useAppStore } from '../stores/appStore';
+
+
 export const getOpenAIApiKey = (): string | null => {
   return localStorage.getItem('openai_api_key');
 };
@@ -44,10 +47,25 @@ const getEdgeFunctionUrl = (functionName: string): string => {
 
 // Get Supabase headers for edge function calls
 const getSupabaseHeaders = () => {
+  // Try to get the key from environment variables
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
   
+  console.log('🔑 Supabase Key Check:', { 
+    hasEnvKey: !!SUPABASE_ANON_KEY,
+    envVars: Object.keys(import.meta.env).filter(key => key.startsWith('VITE_')),
+  });
+  
   if (!SUPABASE_ANON_KEY) {
-    throw new Error('Supabase anon key is not configured');
+    console.warn('⚠️ VITE_SUPABASE_ANON_KEY not found in environment variables');
+    
+    // Fallback to the hardcoded key (only for development to prevent blocking)
+    const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpdWlubmV4YXpmcWhvZGFtaGdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDcxMjU1OTEsImV4cCI6MjAyMjcwMTU5MX0.EhjlgV84WnuBMivKyNE7jTRZDdxn30YZXlsaTYl9m2o';
+    console.log('⚠️ Using fallback anon key for development');
+    
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${fallbackKey}`,
+    };
   }
 
   return {
@@ -94,7 +112,8 @@ export interface GeneratedSynth {
 }
 
 export const generateAISynth = async (request: SynthGenerationRequest): Promise<GeneratedSynth> => {
-  const apiKey = getOpenAIApiKey();
+  // Get API key from Zustand store instead of localStorage
+  const apiKey = useAppStore.getState().tempApiKeys.openai;
   if (!apiKey) {
     throw new Error('OpenAI API key not found. Please set your API key in settings.');
   }
@@ -124,41 +143,107 @@ export const generateAISynth = async (request: SynthGenerationRequest): Promise<
 };
 
 export const generateSynthImage = async (synthData: GeneratedSynth): Promise<string> => {
-  const runwareApiKey = getRunwareApiKey();
+  // Get Runware API key from Zustand store instead of localStorage
+  const store = useAppStore.getState();
+  console.log('🔑 API Key State:', { 
+    hasStoreKeys: !!store.tempApiKeys, 
+    keys: Object.keys(store.tempApiKeys || {})
+  });
+  
+  // First try to get the key from Zustand store
+  let runwareApiKey = store.tempApiKeys?.runware;
+  
+  // If not in store, fall back to localStorage for backwards compatibility
   if (!runwareApiKey) {
+    console.log('⚠️ Runware API key not found in Zustand store, checking localStorage...');
+    const localStorageKey = localStorage.getItem('runware_api_key');
+    if (localStorageKey) {
+      runwareApiKey = localStorageKey;
+    }
+  }
+  
+  console.log('🔑 Runware API Key Status:', { 
+    hasKey: !!runwareApiKey, 
+    keyLength: runwareApiKey ? runwareApiKey.length : 0,
+    source: store.tempApiKeys?.runware ? 'zustand' : (runwareApiKey ? 'localStorage' : 'none')
+  });
+  
+  if (!runwareApiKey) {
+    console.error('❌ Runware API key is missing from both store and localStorage!');
     throw new Error('Runware API key not found. Please set your Runware API key in settings.');
   }
 
   console.log(`🎨 Starting background image generation for: ${synthData.name}`);
-
-  const response = await fetch(getEdgeFunctionUrl('generate-synth-image'), {
-    method: 'POST',
-    headers: getSupabaseHeaders(),
-    body: JSON.stringify({
-      synthData: synthData,
-      runwareApiKey: runwareApiKey,
-      imageType: 'synth'
-    }),
+  
+  // Log endpoint URL
+  const endpointUrl = getEdgeFunctionUrl('generate-synth-image');
+  console.log('🔗 Edge Function URL:', endpointUrl);
+  
+  // Log request headers
+  const headers = getSupabaseHeaders();
+  console.log('📋 Request Headers:', headers);
+  
+  // Clean up the synth data to ensure it has the required properties
+  const cleanedSynthData = {
+    // Add an ID for tracking in Storage, but it's not part of GeneratedSynth type
+    id: `temp-synth-${Date.now()}`,
+    name: synthData.name,
+    age: synthData.age,
+    role: synthData.role,
+    bio: synthData.bio || '',
+    systemPrompt: synthData.systemPrompt,
+    baseModel: synthData.baseModel,
+  };
+  
+  console.log('📋 Request Payload:', {
+    synthData: cleanedSynthData,
+    imageType: 'synth',
+    hasRunwareKey: !!runwareApiKey
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Image generation error:', errorText);
-    throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-  }
+  try {
+    const response = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({
+        synthData: cleanedSynthData,
+        runwareApiKey: runwareApiKey,
+        imageType: 'synth'
+      }),
+    });
 
-  const result = await response.json();
-  
-  if (!result.success) {
-    throw new Error(result.error || 'Failed to generate image');
-  }
+    console.log('🔄 Response Status:', response.status, response.statusText);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Image generation error response:', errorText);
+      throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+    }
 
-  console.log(`✅ Background image generated for: ${synthData.name}`);
-  return result.profileImage;
+    const result = await response.json();
+    console.log('✅ Image generation response:', { 
+      success: result.success, 
+      hasProfileImage: !!result.profileImage,
+      hasDataUrl: !!result.dataUrl,
+      resultKeys: Object.keys(result)
+    });
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to generate image');
+    }
+
+    console.log(`✅ Background image generated for: ${synthData.name}`);
+    // Return the public URL from Supabase Storage, falling back to dataUrl if needed
+    return result.profileImage || result.dataUrl;
+  } catch (error) {
+    console.error('❌ Exception during image generation:', error);
+    throw error;
+  }
 };
 
 export const generateTeamImage = async (teamData: any): Promise<string> => {
-  const runwareApiKey = getRunwareApiKey();
+  // Get Runware API key from Zustand store instead of localStorage
+  const runwareApiKey = useAppStore.getState().tempApiKeys.runware;
   if (!runwareApiKey) {
     throw new Error('Runware API key not found. Please set your Runware API key in settings.');
   }
@@ -188,11 +273,13 @@ export const generateTeamImage = async (teamData: any): Promise<string> => {
   }
 
   console.log(`✅ Background team image generated for: ${teamData.name}`);
-  return result.teamImage;
+  // Return the public URL from Supabase Storage, falling back to dataUrl if needed
+  return result.teamImage || result.dataUrl;
 };
 
 export const generateAITeam = async (request: TeamGenerationRequest) => {
-  const apiKey = getOpenAIApiKey();
+  // Get API key from Zustand store instead of localStorage
+  const apiKey = useAppStore.getState().tempApiKeys.openai;
   if (!apiKey) {
     throw new Error('OpenAI API key not found. Please set your API key in settings.');
   }

@@ -4,72 +4,76 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Pencil, Check, X, Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import { Pencil, Check, X, Plus, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { Team } from '@/types';
 
 interface YourChatsSectionProps {
-  teams: Team[];
+  threads: Team[]; // Team type represents threads in the new architecture
   activeThreadId: string | null;
-  onSelectTeam: (teamId: string) => void;
-  onEditTeamName: (teamId: string, newName: string) => void;
+  onSelectThread: (threadId: string) => void;
+  onEditThreadName: (threadId: string, newName: string) => void;
   onCreateChat: () => void;
-  onDeleteTeam: (teamId: string) => void;
+  onDeleteThread: (threadId: string) => void;
+  onClearChat?: () => void;
+  hasMessages?: boolean;
 }
 
 const YourChatsSection: React.FC<YourChatsSectionProps> = ({
-  teams,
+  threads,
   activeThreadId,
-  onSelectTeam,
-  onEditTeamName,
+  onSelectThread,
+  onEditThreadName,
   onCreateChat,
-  onDeleteTeam,
+  onDeleteThread,
+  onClearChat,
+  hasMessages,
 }) => {
-  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
+  const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [teamToDelete, setTeamToDelete] = useState<Team | null>(null);
+  const [threadToDelete, setThreadToDelete] = useState<Team | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const handleStartEdit = (team: Team) => {
-    setEditingTeamId(team.id);
-    setEditingName(team.name);
+  const handleStartEdit = (thread: Team) => {
+    setEditingThreadId(thread.id);
+    setEditingName(thread.name);
   };
 
   const handleSaveEdit = () => {
-    if (editingTeamId && editingName.trim()) {
-      onEditTeamName(editingTeamId, editingName.trim());
+    if (editingThreadId && editingName.trim()) {
+      onEditThreadName(editingThreadId, editingName.trim());
     }
-    setEditingTeamId(null);
+    setEditingThreadId(null);
     setEditingName('');
   };
 
   const handleCancelEdit = () => {
-    setEditingTeamId(null);
+    setEditingThreadId(null);
     setEditingName('');
   };
 
-  const handleDeleteClick = (team: Team) => {
-    setTeamToDelete(team);
+  const handleDeleteClick = (thread: Team) => {
+    setThreadToDelete(thread);
     setDeleteDialogOpen(true);
   };
 
   const handleConfirmDelete = () => {
-    if (teamToDelete) {
-      onDeleteTeam(teamToDelete.id);
+    if (threadToDelete) {
+      onDeleteThread(threadToDelete.id);
       setDeleteDialogOpen(false);
-      setTeamToDelete(null);
+      setThreadToDelete(null);
     }
   };
 
   const handleCancelDelete = () => {
     setDeleteDialogOpen(false);
-    setTeamToDelete(null);
+    setThreadToDelete(null);
   };
 
-  // Find the active team
-  const activeTeam = teams.find(team => team.id === activeThreadId);
+  // Find the active thread - add safety check for undefined threads
+  const activeThread = threads?.find(thread => thread.id === activeThreadId);
 
-  if (teams.length === 0) {
+  if (!threads || threads.length === 0) {
     return (
       <div className="border-b border-neutral-200 dark:border-neutral-800">
         <Collapsible open={!isCollapsed} onOpenChange={(open) => setIsCollapsed(!open)}>
@@ -85,7 +89,7 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
                     )}
                     <h3 className="text-xs md:text-sm font-medium">
                       Chats
-                      <span className="hidden md:inline"> ({teams.length})</span>
+                      <span className="hidden md:inline"> ({threads?.length || 0})</span>
                     </h3>
                     <span className="hidden md:inline text-xs text-gray-500 dark:text-gray-400 ml-2">Press 1-9 to switch</span>
                   </div>
@@ -101,6 +105,17 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
                   <Plus className="h-3 w-3 md:mr-1" />
                   <span className="hidden md:inline">Create Chat</span>
                 </Button>
+                {onClearChat && hasMessages && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onClearChat}
+                    className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
+                  >
+                    <Trash2 className="h-3 w-3 md:mr-1" />
+                    <span className="hidden md:inline">Clear Chat</span>
+                  </Button>
+                )}
               </div>
             </div>
             <CollapsibleContent>
@@ -127,30 +142,30 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
                   )}
                   <h3 className="text-xs md:text-sm font-medium">
                     Chats
-                    <span className="hidden md:inline"> ({teams.length})</span>
+                    <span className="hidden md:inline"> ({threads?.length || 0})</span>
                   </h3>
-                  {isCollapsed && activeTeam && (
+                  {isCollapsed && activeThread && (
                     <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-full">
                       <div className="flex -space-x-1">
-                        {activeTeam.members.slice(0, 2).map((member, index) => (
+                        {activeThread.members.slice(0, 2).map((member, index) => (
                           <img
                             key={member.id}
                             src={member.profileImage}
                             alt={member.name}
                             className="w-4 h-4 rounded-full object-cover border border-white dark:border-neutral-800"
-                            style={{ zIndex: activeTeam.members.length - index }}
+                            style={{ zIndex: activeThread.members.length - index }}
                           />
                         ))}
-                        {activeTeam.members.length > 2 && (
+                        {activeThread.members.length > 2 && (
                           <div className="w-4 h-4 rounded-full bg-neutral-200 dark:bg-neutral-600 border border-white dark:border-neutral-800 flex items-center justify-center">
                             <span className="text-[10px] font-medium text-neutral-600 dark:text-neutral-300">
-                              +{activeTeam.members.length - 2}
+                              +{activeThread.members.length - 2}
                             </span>
                           </div>
                         )}
                       </div>
                       <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
-                        {activeTeam.name}
+                        {activeThread.name}
                       </span>
                     </div>
                   )}
@@ -168,25 +183,36 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
                 <Plus className="h-3 w-3 md:mr-1" />
                 <span className="hidden md:inline">Create Chat</span>
               </Button>
+              {onClearChat && hasMessages && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onClearChat}
+                  className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
+                >
+                  <Trash2 className="h-3 w-3 md:mr-1" />
+                  <span className="hidden md:inline">Clear Chat</span>
+                </Button>
+              )}
             </div>
           </div>
           <CollapsibleContent>
             <ScrollArea className="max-h-[120px]">
               <div className="flex flex-nowrap md:flex-wrap gap-2 overflow-x-auto md:overflow-x-visible pb-2 md:pb-0">
-                {teams.map((team, index) => (
+                {threads?.map((thread, index) => (
                   <ChatChip
-                    key={team.id}
-                    team={team}
-                    isActive={team.id === activeThreadId}
-                    isEditing={editingTeamId === team.id}
+                    key={thread.id}
+                    thread={thread}
+                    isActive={thread.id === activeThreadId}
+                    isEditing={editingThreadId === thread.id}
                     editingName={editingName}
                     keyboardNumber={index < 9 ? index + 1 : undefined}
-                    onSelect={() => onSelectTeam(team.id)}
-                    onStartEdit={() => handleStartEdit(team)}
+                    onSelect={() => onSelectThread(thread.id)}
+                    onStartEdit={() => handleStartEdit(thread)}
                     onSaveEdit={handleSaveEdit}
                     onCancelEdit={handleCancelEdit}
                     onEditingNameChange={setEditingName}
-                    onDeleteClick={() => handleDeleteClick(team)}
+                    onDeleteClick={() => handleDeleteClick(thread)}
                   />
                 ))}
               </div>
@@ -200,7 +226,7 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Chat</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the chat "{teamToDelete?.name}"? This action cannot be undone and all chat messages will be permanently deleted.
+              Are you sure you want to delete the thread "{threadToDelete?.name}"? This action cannot be undone and all messages will be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -209,7 +235,7 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
               onClick={handleConfirmDelete}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
-              Delete Chat
+              Delete Thread
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -219,7 +245,7 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
 };
 
 interface ChatChipProps {
-  team: Team;
+  thread: Team; // Team type represents a thread in the new architecture
   isActive: boolean;
   isEditing: boolean;
   editingName: string;
@@ -233,7 +259,7 @@ interface ChatChipProps {
 }
 
 const ChatChip: React.FC<ChatChipProps> = ({
-  team,
+  thread,
   isActive,
   isEditing,
   editingName,
@@ -253,29 +279,29 @@ const ChatChip: React.FC<ChatChipProps> = ({
           : 'bg-white border-neutral-200 hover:bg-neutral-50 dark:bg-neutral-800 dark:border-neutral-700 dark:hover:bg-neutral-700'
       }`}
       onClick={!isEditing ? onSelect : undefined}
-      title={keyboardNumber ? `${team.name} (Press ${keyboardNumber})` : team.name}
+      title={keyboardNumber ? `${thread.name} (Press ${keyboardNumber})` : thread.name}
     >
-      {/* Member Profile Pictures */}
+      {/* Synth Profile Pictures */}
       <div className="flex -space-x-1">
-        {team.members.slice(0, 3).map((member, index) => (
+        {thread.members.slice(0, 3).map((member, index) => (
           <img
             key={member.id}
             src={member.profileImage}
             alt={member.name}
             className="w-6 h-6 rounded-full object-cover border-2 border-white dark:border-neutral-800"
-            style={{ zIndex: team.members.length - index }}
+            style={{ zIndex: thread.members.length - index }}
           />
         ))}
-        {team.members.length > 3 && (
+        {thread.members.length > 3 && (
           <div className="w-6 h-6 rounded-full bg-neutral-200 dark:bg-neutral-600 border-2 border-white dark:border-neutral-800 flex items-center justify-center">
             <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
-              +{team.members.length - 3}
+              +{thread.members.length - 3}
             </span>
           </div>
         )}
       </div>
 
-      {/* Team Name */}
+      {/* Thread Name */}
       {isEditing ? (
         <div className="flex items-center gap-1">
           <Input
@@ -307,7 +333,7 @@ const ChatChip: React.FC<ChatChipProps> = ({
         </div>
       ) : (
         <div className="flex items-center gap-1">
-          <span className="text-xs font-medium">{team.name}</span>
+          <span className="text-xs font-medium">{thread.name}</span>
           <Button
             size="icon"
             variant="ghost"

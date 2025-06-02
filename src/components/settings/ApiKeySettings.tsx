@@ -4,66 +4,73 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Eye, EyeOff, Key, Image } from 'lucide-react';
-import { getOpenAIApiKey, setOpenAIApiKey, removeOpenAIApiKey, hasOpenAIApiKey, getRunwareApiKey, setRunwareApiKey, removeRunwareApiKey, hasRunwareApiKey } from '@/lib/api-utils';
+import { setRunwareApiKey, removeRunwareApiKey } from '@/lib/api-utils';
+// Import the Zustand store hook for API key management
+import { useApiKey } from '@/hooks/store/useApiKey';
+import { useAppStore } from '@/stores';
 
 const ApiKeySettings: React.FC = () => {
-  // OpenAI API Key state
-  const [openaiApiKey, setOpenaiApiKeyState] = useState('');
-  const [hasOpenaiKey, setHasOpenaiKey] = useState(false);
+  // Get API key state and methods from Zustand store
+  const { openaiApiKey, setOpenaiApiKey, isApiKeyValid } = useApiKey();
+  
+  // Get Runware API key from store
+  const tempApiKeys = useAppStore((state) => state.tempApiKeys);
+  const setTempApiKey = useAppStore((state) => state.setTempApiKey);
+  const removeTempApiKey = useAppStore((state) => state.removeTempApiKey);
+  
+  // Get Runware API key and check if it's valid
+  const runwareApiKey = tempApiKeys.runware || '';
+  const hasRunwareKey = runwareApiKey.trim().length > 0;
+  
+  // Local state for editing UI
+  const [localOpenaiKey, setLocalOpenaiKey] = useState(openaiApiKey);
+  const [localRunwareKey, setLocalRunwareKey] = useState(runwareApiKey);
   const [isEditingOpenai, setIsEditingOpenai] = useState(false);
-  const [showOpenaiApiKey, setShowOpenaiApiKey] = useState(false);
-
-  // Runware API Key state
-  const [runwareApiKey, setRunwareApiKeyState] = useState('');
-  const [hasRunwareKey, setHasRunwareKey] = useState(false);
   const [isEditingRunware, setIsEditingRunware] = useState(false);
+  const [showOpenaiApiKey, setShowOpenaiApiKey] = useState(false);
   const [showRunwareApiKey, setShowRunwareApiKey] = useState(false);
 
+  // Update local state when store values change
   useEffect(() => {
-    // Check if OpenAI API keys exist
-    setHasOpenaiKey(hasOpenAIApiKey());
-    if (hasOpenAIApiKey()) {
-      const key = getOpenAIApiKey();
-      setOpenaiApiKeyState(key || '');
-    }
-
-    // Check if Runware API keys exist
-    setHasRunwareKey(hasRunwareApiKey());
-    if (hasRunwareApiKey()) {
-      const key = getRunwareApiKey();
-      setRunwareApiKeyState(key || '');
-    }
-  }, []);
+    setLocalOpenaiKey(openaiApiKey);
+    setLocalRunwareKey(runwareApiKey);
+  }, [openaiApiKey, runwareApiKey]);
 
   const handleSaveOpenaiKey = () => {
-    if (openaiApiKey.trim()) {
-      setOpenAIApiKey(openaiApiKey.trim());
-      setHasOpenaiKey(true);
+    if (localOpenaiKey.trim()) {
+      setOpenaiApiKey(localOpenaiKey.trim());
       setIsEditingOpenai(false);
       setShowOpenaiApiKey(false);
     }
   };
 
   const handleRemoveOpenaiKey = () => {
-    removeOpenAIApiKey();
-    setOpenaiApiKeyState('');
-    setHasOpenaiKey(false);
+    setOpenaiApiKey('');
+    setLocalOpenaiKey('');
     setIsEditingOpenai(false);
   };
 
   const handleSaveRunwareKey = () => {
-    if (runwareApiKey.trim()) {
-      setRunwareApiKey(runwareApiKey.trim());
-      setHasRunwareKey(true);
+    if (localRunwareKey.trim()) {
+      // Save to Zustand store
+      setTempApiKey('runware', localRunwareKey.trim());
+      
+      // Also save to localStorage for backward compatibility
+      setRunwareApiKey(localRunwareKey.trim());
+      
       setIsEditingRunware(false);
       setShowRunwareApiKey(false);
     }
   };
 
   const handleRemoveRunwareKey = () => {
+    // Remove from Zustand store
+    removeTempApiKey('runware');
+    
+    // Also remove from localStorage
     removeRunwareApiKey();
-    setRunwareApiKeyState('');
-    setHasRunwareKey(false);
+    
+    setLocalRunwareKey('');
     setIsEditingRunware(false);
   };
 
@@ -86,7 +93,7 @@ const ApiKeySettings: React.FC = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!hasOpenaiKey || isEditingOpenai ? (
+          {!isApiKeyValid || isEditingOpenai ? (
             // Editing mode
             <div className="space-y-4">
               <div className="space-y-2">
@@ -95,8 +102,8 @@ const ApiKeySettings: React.FC = () => {
                   <Input
                     id="openai-api-key"
                     type={showOpenaiApiKey ? 'text' : 'password'}
-                    value={openaiApiKey}
-                    onChange={(e) => setOpenaiApiKeyState(e.target.value)}
+                    value={localOpenaiKey}
+                    onChange={(e) => setLocalOpenaiKey(e.target.value)}
                     placeholder="sk-..."
                     className="pr-10"
                   />
@@ -127,10 +134,10 @@ const ApiKeySettings: React.FC = () => {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button onClick={handleSaveOpenaiKey} disabled={!openaiApiKey.trim()}>
+                <Button onClick={handleSaveOpenaiKey} disabled={!localOpenaiKey.trim()}>
                   Save Key
                 </Button>
-                {hasOpenaiKey && (
+                {isApiKeyValid && (
                   <Button variant="outline" onClick={() => setIsEditingOpenai(false)}>
                     Cancel
                   </Button>
@@ -188,8 +195,8 @@ const ApiKeySettings: React.FC = () => {
                   <Input
                     id="runware-api-key"
                     type={showRunwareApiKey ? 'text' : 'password'}
-                    value={runwareApiKey}
-                    onChange={(e) => setRunwareApiKeyState(e.target.value)}
+                    value={localRunwareKey}
+                    onChange={(e) => setLocalRunwareKey(e.target.value)}
                     placeholder="Enter your Runware API key..."
                     className="pr-10"
                   />
@@ -220,7 +227,7 @@ const ApiKeySettings: React.FC = () => {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button onClick={handleSaveRunwareKey} disabled={!runwareApiKey.trim()}>
+                <Button onClick={handleSaveRunwareKey} disabled={!localRunwareKey.trim()}>
                   Save Key
                 </Button>
                 {hasRunwareKey && (

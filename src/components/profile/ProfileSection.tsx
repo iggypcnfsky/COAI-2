@@ -6,6 +6,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { PlusCircle, X, Save, Check, Trash2 } from 'lucide-react';
 import { AIEmployee, TeamMember } from '@/types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Use the Zustand store hooks
+
 
 interface ProfileSectionProps {
   employee: AIEmployee | null;
@@ -28,15 +30,18 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
   isCollapsed,
   onToggleCollapse,
 }) => {
+  // Get auth state from Zustand
+
+  
+  // Use local state for now since we need to properly integrate with Zustand
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [selectedModel, setSelectedModel] = useState<AIEmployee['baseModel']>('gpt-4o');
+  const [isUpdateSuccessful, setIsUpdateSuccessful] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isImageHovered, setIsImageHovered] = useState(false);
+  
   const isEditingTeamMember = !!teamMember && !employee;
   const displayData = teamMember || employee;
-  
-  const [systemPrompt, setSystemPrompt] = useState('');
-  const [selectedModel, setSelectedModel] = useState<AIEmployee['baseModel']>('gpt-4.1-nano');
-  const [isUpdateSuccessful, setIsUpdateSuccessful] = useState(false);
-  const [isImageHovered, setIsImageHovered] = useState(false);
-  const [videoLoaded, setVideoLoaded] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const videoRef = React.useRef<HTMLVideoElement>(null);
 
   React.useEffect(() => {
@@ -52,12 +57,10 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
 
   // Reset video state when profile changes
   React.useEffect(() => {
-    setVideoLoaded(false);
     setIsImageHovered(false);
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.currentTime = 0;
-      // Force reload the video source
       videoRef.current.load();
     }
   }, [displayData?.id]);
@@ -109,12 +112,14 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
 
   const handleImageMouseEnter = async () => {
     setIsImageHovered(true);
-    if (videoRef.current && videoLoaded) {
+    if (videoRef.current) {
       try {
         videoRef.current.currentTime = 0;
-        await videoRef.current.play();
+        await videoRef.current.play().catch(() => {
+          // Silently handle autoplay issues
+        });
       } catch (error) {
-        console.log('Video play failed:', error);
+        // Gracefully handle video play failure
       }
     }
   };
@@ -125,15 +130,6 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
       videoRef.current.pause();
       videoRef.current.currentTime = 0;
     }
-  };
-
-  const handleVideoLoaded = () => {
-    setVideoLoaded(true);
-  };
-
-  const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
-    console.log('Video failed to load:', e);
-    setVideoLoaded(false);
   };
 
   // Generate video path based on employee name
@@ -178,7 +174,7 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
           />
           
           {/* Video overlay - shows on hover */}
-          <div className={`absolute inset-0 transition-opacity duration-300 ${isImageHovered && videoLoaded ? 'opacity-100' : 'opacity-0'}`}>
+          <div className={`absolute inset-0 transition-opacity duration-300 ${isImageHovered ? 'opacity-100' : 'opacity-0'}`}>
             <video
               ref={videoRef}
               className="w-full h-full object-cover"
@@ -186,8 +182,6 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
               loop
               playsInline
               preload="metadata"
-              onLoadedData={handleVideoLoaded}
-              onError={handleVideoError}
             >
               <source src={videoPath} type="video/mp4" />
             </video>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Command, CommandInput, CommandList, CommandItem, CommandEmpty } from '@/components/ui/command';
@@ -8,6 +8,7 @@ import { AIEmployee, TeamMember } from '@/types';
 import { useMentions } from '@/hooks/useMentions';
 import MentionBadge from './MentionBadge';
 import FileMentionBadge from './FileMentionBadge';
+import { useMessageInput } from '@/hooks/store';
 
 interface Document {
   id: string;
@@ -40,13 +41,28 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
   globalSpacebarCount = 0,
   onSetDocumentMentionHandler,
 }) => {
-  const [message, setMessage] = useState('');
-  const [cursorPosition, setCursorPosition] = useState(0);
-  const [isTriggeringAI, setIsTriggeringAI] = useState(false);
-  const [attachedImage, setAttachedImage] = useState<any>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [messageHistory, setMessageHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  // Use message input hook for state management
+  const {
+    text: message,
+    cursorPosition,
+    isTriggeringAI,
+    attachedImage,
+    isDragOver,
+    messageHistory,
+    historyIndex,
+    selectedMentionIndex,
+    setText: setMessage,
+    setCursorPosition,
+    setIsTriggeringAI,
+    setAttachedImage,
+    setIsDragOver,
+    setMessageHistory,
+    setHistoryIndex,
+    setSelectedMentionIndex
+  } = useMessageInput();
+  
+
+  
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -66,125 +82,28 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
     setIsShowingMentions,
     clearCompletedMentions
   } = useMentions({ employees: teamEmployees });
-
-  // Set up document mention handler when component mounts
-  useEffect(() => {
-    if (onSetDocumentMentionHandler) {
-      const handleDocumentMention = (doc: Document) => {
-        // Add null check to prevent errors
-        if (!doc || !doc.title) {
-          console.error('Invalid document passed to handleDocumentMention:', doc);
-          return;
-        }
-        
-        console.log('🚨 [DOCUMENT MENTION DEBUG] === HANDLE DOCUMENT MENTION ===');
-        console.log('🚨 [DOCUMENT MENTION DEBUG] Document received:', doc);
-        console.log('🚨 [DOCUMENT MENTION DEBUG] Document title:', doc.title);
-        console.log('🚨 [DOCUMENT MENTION DEBUG] Document content length:', doc.content?.length || 0);
-        console.log('🚨 [DOCUMENT MENTION DEBUG] Document content preview:', doc.content?.substring(0, 100) || 'No content');
-        
-        // Insert document mention at current cursor position
-        const currentMessage = textareaRef.current?.value || '';
-        const currentCursor = textareaRef.current?.selectionStart || 0;
-        
-        console.log('🚨 [DOCUMENT MENTION DEBUG] Current message before insert:', currentMessage);
-        console.log('🚨 [DOCUMENT MENTION DEBUG] Current cursor position:', currentCursor);
-        
-        const beforeCursor = currentMessage.substring(0, currentCursor);
-        const afterCursor = currentMessage.substring(currentCursor);
-        
-        console.log('🚨 [DOCUMENT MENTION DEBUG] Before cursor:', beforeCursor);
-        console.log('🚨 [DOCUMENT MENTION DEBUG] After cursor:', afterCursor);
-        
-        // Create a document mention format with hidden content for AI context
-        const documentMention = `📄[${doc.title}]`;
-        const hiddenContext = `\n\n<!-- DOCUMENT_CONTEXT: 
-Document Title: "${doc.title}"
-Document ID: ${doc.id}
-Content: ${doc.content || 'No content available'}
-Created: ${doc.createdAt || 'Unknown'}
-Updated: ${doc.updatedAt || 'Unknown'}
--->`;
-        
-        console.log('🚨 [DOCUMENT MENTION DEBUG] Document mention:', documentMention);
-        console.log('🚨 [DOCUMENT MENTION DEBUG] Hidden context:', hiddenContext);
-        console.log('🚨 [DOCUMENT MENTION DEBUG] Hidden context length:', hiddenContext.length);
-        
-        const newText = `${beforeCursor}${documentMention}${hiddenContext} ${afterCursor}`;
-        const newCursorPosition = beforeCursor.length + documentMention.length + hiddenContext.length + 1;
-        
-        console.log('🚨 [DOCUMENT MENTION DEBUG] New text:', newText);
-        console.log('🚨 [DOCUMENT MENTION DEBUG] New text length:', newText.length);
-        console.log('🚨 [DOCUMENT MENTION DEBUG] New cursor position:', newCursorPosition);
-        console.log('🚨 [DOCUMENT MENTION DEBUG] About to call setMessage...');
-        
-        setMessage(newText);
-        setCursorPosition(newCursorPosition);
-        
-        console.log('🚨 [DOCUMENT MENTION DEBUG] setMessage called, checking async update...');
-        
-        // Focus the textarea and set cursor position
-        setTimeout(() => {
-          if (textareaRef.current) {
-            textareaRef.current.focus();
-            textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-          }
-          console.log('🚨 [DOCUMENT MENTION DEBUG] Textarea focused and cursor set');
-        }, 0);
-      };
-      
-      onSetDocumentMentionHandler(handleDocumentMention);
-      
-      // Cleanup function to remove handler when component unmounts
-      return () => {
-        onSetDocumentMentionHandler(null);
-      };
+  
+  // Create a display version of the message without document context for the textarea
+  const displayMessage = useMemo(() => {
+    if (message.includes('<!-- DOCUMENT_CONTEXT:')) {
+      // More flexible regex to handle the multi-line format with whitespace
+      const afterReplace = message.replace(/\n\n<!-- DOCUMENT_CONTEXT:\s*\n[\s\S]*?-->/g, '');
+      return afterReplace;
     }
-  }, [onSetDocumentMentionHandler]); // Only depend on the handler setter function
-
-  // Reset selected mention index when filtered employees change
-  useEffect(() => {
-    setSelectedMentionIndex(0);
-  }, [filteredEmployees]);
-
-  // Reset triggering state when AI processing completes
-  useEffect(() => {
-    if (!isWaitingForStream && isTriggeringAI) {
-      setIsTriggeringAI(false);
-      // Refocus the textarea after AI processing completes
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus();
-        }
-      }, 100);
-    }
-  }, [isWaitingForStream, isTriggeringAI]);
+    
+    return message;
+  }, [message]);
 
   // Handle sending a message
-  const handleSendMessage = () => {
+  const handleSendMessage = useCallback(() => {
     if (message.trim() || attachedImage) {
       const messageToSend = displayMessage; // Send clean message to chat history
       const fullMessageWithContext = message; // Keep full context for AI processing
       const displayMessageForHistory = displayMessage.trim(); // Use clean version for history
       
-      // 🚨 DEBUG: Log document context handling
-      console.log('🚨 [DOCUMENT DEBUG] === MESSAGE SEND DEBUG ===');
-      console.log('🚨 [DOCUMENT DEBUG] Original message length:', message.length);
-      console.log('🚨 [DOCUMENT DEBUG] Display message length:', displayMessage.length);
-      console.log('🚨 [DOCUMENT DEBUG] Contains DOCUMENT_CONTEXT:', message.includes('<!-- DOCUMENT_CONTEXT:'));
-      console.log('🚨 [DOCUMENT DEBUG] Message being sent to onSendMessage (clean):', messageToSend.substring(0, 200) + '...');
-      console.log('🚨 [DOCUMENT DEBUG] Full message with context (for AI):', fullMessageWithContext.substring(0, 200) + '...');
-      
-      if (message.includes('<!-- DOCUMENT_CONTEXT:')) {
-        const contextMatch = message.match(/\n\n<!-- DOCUMENT_CONTEXT:\s*\n[\s\S]*?-->/);
-        if (contextMatch) {
-          console.log('🚨 [DOCUMENT DEBUG] Document context found in message:', contextMatch[0].substring(0, 300) + '...');
-        }
-      }
-      
       // Add to message history if it's not empty and not the same as the last message
       if (displayMessageForHistory && (messageHistory.length === 0 || messageHistory[messageHistory.length - 1] !== displayMessageForHistory)) {
-        setMessageHistory(prev => [...prev, displayMessageForHistory]);
+        setMessageHistory([...messageHistory, displayMessageForHistory]);
       }
       
       // Send clean message to UI, but we need to pass the full context to AI somehow
@@ -198,38 +117,81 @@ Updated: ${doc.updatedAt || 'Unknown'}
       return true; // Indicate message was sent
     }
     return false; // Indicate message was not sent
-  };
+  }, [message, attachedImage, displayMessage, messageHistory, setMessage, setAttachedImage, setCursorPosition, setHistoryIndex, setMessageHistory, onSendMessage, clearCompletedMentions]);
 
-  // Create a display version of the message without document context for the textarea
-  const displayMessage = useMemo(() => {
-    console.log('🚨 [DISPLAY DEBUG] Original message:', message);
-    console.log('🚨 [DISPLAY DEBUG] Contains DOCUMENT_CONTEXT:', message.includes('<!-- DOCUMENT_CONTEXT:'));
-    
-    if (message.includes('<!-- DOCUMENT_CONTEXT:')) {
-      const beforeReplace = message;
-      // More flexible regex to handle the multi-line format with whitespace
-      const afterReplace = message.replace(/\n\n<!-- DOCUMENT_CONTEXT:\s*\n[\s\S]*?-->/g, '');
+  // Set up document mention handler when component mounts
+  useEffect(() => {
+    if (onSetDocumentMentionHandler) {
+      const handleDocumentMention = (doc: Document) => {
+        // Add null check to prevent errors
+        if (!doc || !doc.title) {
+          console.error('Invalid document passed to handleDocumentMention:', doc);
+          return;
+        }
+        
+        // Insert document mention at current cursor position
+        const currentMessage = textareaRef.current?.value || '';
+        const currentCursor = textareaRef.current?.selectionStart || 0;
+        
+        const beforeCursor = currentMessage.substring(0, currentCursor);
+        const afterCursor = currentMessage.substring(currentCursor);
+        
+        // Create a document mention format with hidden content for AI context
+        const documentMention = `📄[${doc.title}]`;
+        const hiddenContext = `\n\n<!-- DOCUMENT_CONTEXT: 
+Document Title: "${doc.title}"
+Document ID: ${doc.id}
+Content: ${doc.content || 'No content available'}
+Created: ${doc.createdAt || 'Unknown'}
+Updated: ${doc.updatedAt || 'Unknown'}
+-->`;
+        
+        const newText = `${beforeCursor}${documentMention}${hiddenContext} ${afterCursor}`;
+        const newCursorPosition = beforeCursor.length + documentMention.length + hiddenContext.length + 1;
+        
+        setMessage(newText);
+        setCursorPosition(newCursorPosition);
+        
+        // Focus the textarea and set cursor position
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
+          }
+        }, 0);
+      };
       
-      console.log('🚨 [DISPLAY DEBUG] Before replace length:', beforeReplace.length);
-      console.log('🚨 [DISPLAY DEBUG] After replace length:', afterReplace.length);
-      console.log('🚨 [DISPLAY DEBUG] Replacement worked:', beforeReplace.length !== afterReplace.length);
-      console.log('🚨 [DISPLAY DEBUG] After replace:', afterReplace);
+      onSetDocumentMentionHandler(handleDocumentMention);
       
-      return afterReplace;
+      // Cleanup function to remove handler when component unmounts
+      return () => {
+        onSetDocumentMentionHandler(null);
+      };
     }
-    
-    return message;
-  }, [message]);
+  }, [onSetDocumentMentionHandler, setMessage, setCursorPosition]); // Include Zustand setters in dependencies
+
+  // Reset selected mention index when filtered employees change
+  useEffect(() => {
+    setSelectedMentionIndex(0);
+  }, [filteredEmployees, setSelectedMentionIndex]);
+
+  // Reset triggering state when AI processing completes
+  useEffect(() => {
+    if (!isWaitingForStream && isTriggeringAI) {
+      setIsTriggeringAI(false);
+      // Refocus the textarea after AI processing completes
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
+      }, 100);
+    }
+  }, [isWaitingForStream, isTriggeringAI, setIsTriggeringAI]);
 
   // Handle text change
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
     const newCursorPosition = e.target.selectionStart;
-    
-    console.log('🚨 [TEXT CHANGE DEBUG] === TEXT CHANGE DEBUG ===');
-    console.log('🚨 [TEXT CHANGE DEBUG] New value from textarea:', newValue);
-    console.log('🚨 [TEXT CHANGE DEBUG] Current message state:', message);
-    console.log('🚨 [TEXT CHANGE DEBUG] Current message contains DOCUMENT_CONTEXT:', message.includes('<!-- DOCUMENT_CONTEXT:'));
     
     // Check if the current message has hidden document context
     const hasDocumentContext = message.includes('<!-- DOCUMENT_CONTEXT:');
@@ -240,21 +202,15 @@ Updated: ${doc.updatedAt || 'Unknown'}
       
       if (contextMatch) {
         const hiddenContext = contextMatch[0];
-        console.log('🚨 [TEXT CHANGE DEBUG] Preserving hidden context:', hiddenContext.substring(0, 100) + '...');
         
         // The new value is just the visible part, so we need to re-add the hidden context
         const newValueWithContext = newValue + hiddenContext;
         
-        console.log('🚨 [TEXT CHANGE DEBUG] New value with preserved context length:', newValueWithContext.length);
-        console.log('🚨 [TEXT CHANGE DEBUG] Setting message to preserve context...');
-        
         setMessage(newValueWithContext);
       } else {
-        console.log('🚨 [TEXT CHANGE DEBUG] No context match found, using new value as-is');
         setMessage(newValue);
       }
     } else {
-      console.log('🚨 [TEXT CHANGE DEBUG] No document context to preserve, using new value as-is');
       setMessage(newValue);
     }
     
@@ -279,9 +235,55 @@ Updated: ${doc.updatedAt || 'Unknown'}
   };
 
   // Handle keyboard shortcuts
-  const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Debug handler: Shift+Alt+T creates a test thread
+    if (e.shiftKey && e.altKey && e.key === 'T') {
+      console.log('🔧 [DEBUG TEST] Creating test thread...');
+      
+      // Import and use the direct thread creation for testing
+      import('../../lib/services/directService').then(({ directService }) => {
+        directService.createThread('Test Thread ' + new Date().toLocaleTimeString())
+          .then(thread => {
+            console.log('🔧 [DEBUG TEST] Test thread created:', thread);
+            
+            // Set active thread in store
+            import('../../stores/appStore').then(({ useAppStore }) => {
+              useAppStore.setState(state => ({
+                ui: {
+                  ...state.ui,
+                  activeThreadId: thread.id
+                }
+              }));
+              console.log('🔧 [DEBUG TEST] Active thread set to:', thread.id);
+            });
+          })
+          .catch(error => {
+            console.error('🔧 [DEBUG TEST] Error creating test thread:', error);
+          });
+      });
+      
+      e.preventDefault();
+      return;
+    }
+    
+    // Debug handler: Shift+Alt+M logs the UI state
+    if (e.shiftKey && e.altKey && e.key === 'M') {
+      import('../../stores/appStore').then(({ useAppStore }) => {
+        const state = useAppStore.getState();
+        console.log('🔧 [DEBUG TEST] Current UI state:', {
+          activeThreadId: state.ui.activeThreadId,
+          activeTeamId: state.ui.activeTeamId,
+          selectedSynthId: state.ui.selectedSynthId,
+          messageInput: state.ui.messageInput,
+          threadMessages: state.relationships.threadMessages,
+          messages: state.entities.messages,
+          threads: state.entities.threads
+        });
+      });
+      e.preventDefault();
+      return;
+    }
+
     // Handle spacebar in empty input to trigger AI continuation (but global handler will take precedence)
     if (e.key === ' ' && !message.trim() && onAIContinue && !isWaitingForStream) {
       e.preventDefault();
@@ -330,12 +332,12 @@ Updated: ${doc.updatedAt || 'Unknown'}
         setSelectedMentionIndex(0);
         e.preventDefault();
       } else if (e.key === 'ArrowDown') {
-        setSelectedMentionIndex(prev => 
+        setSelectedMentionIndex((prev: number) => 
           prev < filteredEmployees.length - 1 ? prev + 1 : 0
         );
         e.preventDefault();
       } else if (e.key === 'ArrowUp') {
-        setSelectedMentionIndex(prev => 
+        setSelectedMentionIndex((prev: number) => 
           prev > 0 ? prev - 1 : filteredEmployees.length - 1
         );
         e.preventDefault();
@@ -475,46 +477,26 @@ Updated: ${doc.updatedAt || 'Unknown'}
     e.stopPropagation();
     setIsDragOver(false);
     
-    console.log('🚨 [DROP DEBUG] === DROP EVENT TRIGGERED ===');
-    console.log('🚨 [DROP DEBUG] Drop event:', e);
-    console.log('🚨 [DROP DEBUG] DataTransfer types:', Array.from(e.dataTransfer.types));
-    console.log('🚨 [DROP DEBUG] DataTransfer items:', Array.from(e.dataTransfer.items));
-    
     try {
       // First check if it's a file drop for images
       const files = Array.from(e.dataTransfer.files);
-      console.log('🚨 [DROP DEBUG] Files dropped:', files.length);
       
       const imageFile = files.find(file => file.type.startsWith('image/'));
       
       if (imageFile) {
-        console.log('🚨 [DROP DEBUG] Image file detected, processing...');
         processImageFile(imageFile);
         return;
       }
       
       // Then check if it's a document drop from the browser panel
       const dragData = e.dataTransfer.getData('application/json');
-      console.log('🚨 [DROP DEBUG] JSON drag data:', dragData);
       
       if (dragData) {
         const parsedData = JSON.parse(dragData);
-        console.log('🚨 [DROP DEBUG] Parsed drag data:', parsedData);
         
         if (parsedData.type === 'document' && parsedData.document) {
           // Handle document drop by inserting mention
           const doc = parsedData.document;
-          
-          // 🚨 DEBUG: Log document drop details
-          console.log('🚨 [DOCUMENT DEBUG] === DOCUMENT DROP DEBUG ===');
-          console.log('🚨 [DOCUMENT DEBUG] Document dropped:', doc);
-          console.log('🚨 [DOCUMENT DEBUG] Document title:', doc.title);
-          console.log('🚨 [DOCUMENT DEBUG] Document content length:', doc.content?.length || 0);
-          console.log('🚨 [DOCUMENT DEBUG] Document content preview:', doc.content?.substring(0, 100) + '...' || 'No content');
-          console.log('🚨 [DOCUMENT DEBUG] Document created:', doc.createdAt);
-          console.log('🚨 [DOCUMENT DEBUG] Document updated:', doc.updatedAt);
-          console.log('🚨 [DOCUMENT DEBUG] Current message before drop:', message);
-          console.log('🚨 [DOCUMENT DEBUG] Current cursor position:', cursorPosition);
           
           // Add null check to prevent errors
           if (!doc || !doc.title) {
@@ -538,21 +520,8 @@ Updated: ${doc.updatedAt || 'Unknown'}
           const newText = `${beforeCursor}${documentMention}${hiddenContext} ${afterCursor}`;
           const newCursorPosition = beforeCursor.length + documentMention.length + hiddenContext.length + 1;
           
-          // 🚨 DEBUG: Log the constructed message
-          console.log('🚨 [DOCUMENT DEBUG] Document mention:', documentMention);
-          console.log('🚨 [DOCUMENT DEBUG] Hidden context length:', hiddenContext.length);
-          console.log('🚨 [DOCUMENT DEBUG] Hidden context preview:', hiddenContext.substring(0, 200) + '...');
-          console.log('🚨 [DOCUMENT DEBUG] New text length:', newText.length);
-          console.log('🚨 [DOCUMENT DEBUG] New text preview:', newText.substring(0, 300) + '...');
-          console.log('🚨 [DOCUMENT DEBUG] Setting message to:', newText);
-          
           setMessage(newText);
           setCursorPosition(newCursorPosition);
-          
-          // 🚨 DEBUG: Verify the message was set correctly
-          setTimeout(() => {
-            console.log('🚨 [DOCUMENT DEBUG] Message after setState (async check):', message);
-          }, 100);
           
           // Focus the textarea and set cursor position
           setTimeout(() => {

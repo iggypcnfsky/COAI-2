@@ -1,46 +1,19 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+/**
+ * This file is maintained for backward compatibility only.
+ * New code should import directly from src/hooks/store/useApiKey
+ * 
+ * @deprecated Use useApiKey from src/hooks/store/useApiKey directly
+ */
 
-interface ApiKeyContextType {
-  openaiApiKey: string;
-  setOpenaiApiKey: (key: string) => void;
-  isApiKeyValid: boolean;
-}
+import { useApiKey as useZustandApiKey, ApiKeyHookResult } from '../hooks/store/useApiKey';
 
-const ApiKeyContext = createContext<ApiKeyContextType | undefined>(undefined);
+// Re-export for compatibility
+export const useApiKey = useZustandApiKey;
 
-export const useApiKey = () => {
-  const context = useContext(ApiKeyContext);
-  if (context === undefined) {
-    throw new Error('useApiKey must be used within an ApiKeyProvider');
-  }
-  return context;
-};
+// Re-export the type
+export type { ApiKeyHookResult };
 
+// Maintain Provider for compatibility (but it doesn't do anything now)
 export const ApiKeyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [openaiApiKey, setOpenaiApiKeyState] = useState<string>('');
-
-  // Load API key from localStorage on mount
-  useEffect(() => {
-    const savedKey = localStorage.getItem('openai_api_key');
-    if (savedKey) {
-      setOpenaiApiKeyState(savedKey);
-    }
-  }, []);
-
-  const setOpenaiApiKey = (key: string) => {
-    setOpenaiApiKeyState(key);
-    if (key) {
-      localStorage.setItem('openai_api_key', key);
-    } else {
-      localStorage.removeItem('openai_api_key');
-    }
-  };
-
-  const isApiKeyValid = openaiApiKey.trim().length > 0;
-
-  return (
-    <ApiKeyContext.Provider value={{ openaiApiKey, setOpenaiApiKey, isApiKeyValid }}>
-      {children}
-    </ApiKeyContext.Provider>
-  );
+  return <>{children}</>;
 }; 

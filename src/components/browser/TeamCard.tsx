@@ -1,24 +1,21 @@
 import React from 'react';
-import { PremadeTeam, getTeamEmployees } from '@/data/premadeTeams';
-import { AIEmployee } from '@/types';
+import { AIEmployee, CustomTeam } from '@/types';
 import { Plus } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 interface TeamCardProps {
-  team: PremadeTeam;
-  allEmployees: AIEmployee[];
-  onClick: (team: PremadeTeam) => void;
+  team: CustomTeam;
+  onClick: (team: CustomTeam) => void;
   onQuickAdd: (employees: AIEmployee[]) => void;
 }
 
 const TeamCard: React.FC<TeamCardProps> = ({
   team,
-  allEmployees,
   onClick,
   onQuickAdd,
 }) => {
-  const teamEmployees = getTeamEmployees(team, allEmployees);
+  const teamEmployees = team.selectedSynths;
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('application/json', JSON.stringify({
@@ -44,7 +41,7 @@ const TeamCard: React.FC<TeamCardProps> = ({
       {/* Full background image */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${team.backgroundImage})` }}
+        style={{ backgroundImage: `url(${team.teamImage || '/images/default-team-bg.jpg'})` }}
       >
         {/* Dark overlay for better text readability */}
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors duration-300" />

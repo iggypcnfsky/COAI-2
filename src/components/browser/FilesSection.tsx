@@ -3,14 +3,8 @@ import { FileText, Upload, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import CreateDocumentModal from './CreateDocumentModal';
-
-interface Document {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { useDocuments } from '@/hooks/store/useDocuments';
+import type { Document } from '@/types/store';
 
 interface FilesSectionProps {
   // Future props for file management
@@ -18,9 +12,16 @@ interface FilesSectionProps {
 
 const FilesSection: React.FC<FilesSectionProps> = () => {
   const [isCreateDocumentModalOpen, setIsCreateDocumentModalOpen] = useState(false);
-  const [documents, setDocuments] = useState<Document[]>([]);
   const [draggedDocId, setDraggedDocId] = useState<string | null>(null);
   const [editingDocument, setEditingDocument] = useState<Document | null>(null);
+  
+  // Use the documents hook from Zustand
+  const { 
+    documents, 
+    createDocument, 
+    updateDocument,
+    isLoading
+  } = useDocuments();
 
   const handleCreateDocument = () => {
     setEditingDocument(null); // Ensure we're in create mode
@@ -32,20 +33,27 @@ const FilesSection: React.FC<FilesSectionProps> = () => {
     setIsCreateDocumentModalOpen(true);
   };
 
-  const handleSaveDocument = (savedDocument: Document) => {
-    if (editingDocument) {
-      // Update existing document
-      setDocuments(prev => 
-        prev.map(doc => 
-          doc.id === savedDocument.id ? savedDocument : doc
-        )
-      );
-    } else {
-      // Create new document
-      setDocuments(prev => [savedDocument, ...prev]);
+  const handleSaveDocument = async (documentData: { title: string; content: string; id?: string }) => {
+    try {
+      if (editingDocument) {
+        // Update existing document
+        await updateDocument(editingDocument.id, {
+          title: documentData.title,
+          content: documentData.content,
+        });
+      } else {
+        // Create new document
+        await createDocument({
+          title: documentData.title,
+          content: documentData.content,
+        });
+      }
+      setIsCreateDocumentModalOpen(false);
+      setEditingDocument(null);
+    } catch (error) {
+      console.error('Error saving document:', error);
+      // Handle error (could show an error message)
     }
-    setIsCreateDocumentModalOpen(false);
-    setEditingDocument(null);
   };
 
   const handleCloseModal = () => {
@@ -150,9 +158,9 @@ const FilesSection: React.FC<FilesSectionProps> = () => {
                         {doc.content}
                       </p>
                       <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
-                        Created {doc.createdAt.toLocaleDateString()}
-                        {doc.updatedAt.getTime() !== doc.createdAt.getTime() && (
-                          <span> • Updated {doc.updatedAt.toLocaleDateString()}</span>
+                        Created {new Date(doc.createdAt).toLocaleDateString()}
+                        {new Date(doc.updatedAt).getTime() !== new Date(doc.createdAt).getTime() && (
+                          <span> • Updated {new Date(doc.updatedAt).toLocaleDateString()}</span>
                         )}
                       </p>
                     </div>
@@ -180,7 +188,7 @@ const FilesSection: React.FC<FilesSectionProps> = () => {
         </Card>
 
         {/* Empty state message */}
-        {documents.length === 0 && (
+        {documents.length === 0 && !isLoading && (
           <div className="text-center py-8">
             <FileText className="h-12 w-12 mx-auto mb-4 text-neutral-300 dark:text-neutral-600" />
             <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-2">
@@ -188,6 +196,15 @@ const FilesSection: React.FC<FilesSectionProps> = () => {
             </p>
             <p className="text-xs text-neutral-400 dark:text-neutral-500">
               Upload files or create new documents to get started
+            </p>
+          </div>
+        )}
+
+        {/* Loading state */}
+        {isLoading && documents.length === 0 && (
+          <div className="text-center py-8">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
+              Loading documents...
             </p>
           </div>
         )}

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { TeamMember, ChatMessage as ChatMessageType, AIEmployee, Team } from '@/types';
 import TeamMembersList from './TeamMembersList';
@@ -6,6 +6,10 @@ import YourChatsSection from './YourChatsSection';
 import ChatMessage from './ChatMessage';
 import MessageInputWithMentions from './MessageInputWithMentions';
 import { Loader2 } from 'lucide-react';
+import { useMessages } from '@/hooks/store/useMessages';
+
+import { COAIMessage } from '@/types';
+import { useAppStore } from '@/stores/appStore';
 
 interface Document {
   id: string;
@@ -15,24 +19,43 @@ interface Document {
   updatedAt: Date;
 }
 
+
+
+// Normalize messages to ensure they follow the same structure - moved outside component to prevent recreation
+const normalizeMessage = (msg: ChatMessageType | COAIMessage): ChatMessageType => {
+  if ('message_data' in msg) {
+    const timestamp = msg.created_at ? new Date(msg.created_at) : new Date();
+    return {
+      id: msg.id,
+      content: msg.message_data.content || '',
+      sender: msg.message_data.sender as 'user' | 'ai' || 'ai',
+      timestamp,
+      aiEmployee: msg.message_data.aiEmployee,
+      ...msg.message_data.metadata
+    } as ChatMessageType;
+  }
+  return msg as ChatMessageType;
+};
+
 interface ChatSectionProps {
   teamMembers: TeamMember[];
   onRemoveTeamMember: (id: string) => void;
   onAddTeamMember?: (employee: AIEmployee) => void;
   onAddTeam?: (employees: AIEmployee[]) => void;
   onSelectTeamMember?: (member: TeamMember) => void;
-  messages: ChatMessageType[];
-  onSendMessage: (messageData: { display: string; full: string }, attachedImage?: any) => void;
+  messages?: ChatMessageType[]; // Make optional to use Zustand when available
+  onSendMessage?: (messageData: { display: string; full: string }, attachedImage?: any) => void; // Make optional
   onUploadImage?: (file: File) => void;
   onAIContinue?: () => void;
   onRemoveMessage?: (messageId: string) => void;
   employees: AIEmployee[];
-  teams: Team[];
+  threads: Team[];
   activeThreadId: string | null;
-  onSelectTeam: (teamId: string) => void;
-  onEditTeamName: (teamId: string, newName: string) => void;
+  onSelectThread: (threadId: string) => void;
+  onEditThreadName: (threadId: string, newName: string) => void;
   onCreateChat: () => void;
-  onDeleteTeam: (teamId: string) => void;
+  onDeleteThread: (threadId: string) => void;
+  onClearChat?: () => void;
   isWaitingForStream?: boolean;
   globalSpacebarCount?: number;
 }
@@ -43,90 +66,199 @@ const ChatSection: React.FC<ChatSectionProps> = ({
   onAddTeamMember,
   onAddTeam,
   onSelectTeamMember,
-  messages,
-  onSendMessage,
+
+  onSendMessage: propsSendMessage,
   onUploadImage,
-  onAIContinue,
-  onRemoveMessage,
+  onAIContinue: propsAIContinue,
+  onRemoveMessage: propsRemoveMessage,
   employees,
-  teams,
+  threads,
   activeThreadId,
-  onSelectTeam,
-  onEditTeamName,
+  onSelectThread,
+  onEditThreadName,
   onCreateChat,
-  onDeleteTeam,
-  isWaitingForStream = false,
+  onDeleteThread,
+  onClearChat,
+  isWaitingForStream: propsIsWaitingForStream = false,
   globalSpacebarCount = 0
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [isDragOver, setIsDragOver] = React.useState(false);
   const [dragType, setDragType] = React.useState<'team' | 'employee' | 'document' | null>(null);
-  const [isUserScrolledUp, setIsUserScrolledUp] = React.useState(false);
   const [incomingMessageCount, setIncomingMessageCount] = React.useState(0);
   const [lastMessageCount, setLastMessageCount] = React.useState(0);
   const [insertDocumentMention, setInsertDocumentMention] = React.useState<((doc: Document) => void) | null>(null);
 
-  // Track incoming messages for spacebar feedback
+  const { 
+    isSending,
+    isLoading: isMessagesLoading,
+    sendUserMessage,
+    deleteMessage,
+    streamAiMessage,
+    fetchMessages,
+  } = useMessages(activeThreadId || undefined);
+
+
+  
+  // Listen for refresh messages loading state
+  const shouldRefreshMessages = useAppStore(state => state.ui.loadingStates?.refreshMessages);
+  
+  // Effect to refresh messages when the refresh flag is set
   useEffect(() => {
-    const aiMessages = messages.filter(msg => msg.sender === 'ai');
+    if (shouldRefreshMessages && activeThreadId) {
+      console.log('🔄 [DEBUG] Detected refreshMessages flag, refreshing messages');
+      fetchMessages(activeThreadId).catch(error => {
+        console.error('❌ [DEBUG] Error refreshing messages:', error);
+      });
+    }
+  }, [shouldRefreshMessages, activeThreadId, fetchMessages]);
+
+  // Get messages from the store
+  const messages = useAppStore((state) => state.entities.messages);
+  const threadMessages = useAppStore((state) => state.relationships.threadMessages);
+  
+  // Get messages for the active thread
+  const activeThreadMessages = useMemo(() => {
+    if (!activeThreadId || !threadMessages[activeThreadId]) {
+      return [];
+    }
+    
+    const messageIds = threadMessages[activeThreadId];
+    const threadMessagesList = messageIds
+      .map(id => messages[id])
+      .filter(Boolean)
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    
+    // Debug logging removed to reduce console noise
+    return threadMessagesList;
+  }, [activeThreadId, threadMessages, messages]);
+  
+  const isWaitingForStream = propsIsWaitingForStream || isSending;
+
+  const handleSendMessage = useCallback(async (messageData: { display: string; full: string }, attachedImage?: any) => {
+    console.log('🔍 [DEBUG] ChatSection.handleSendMessage called:', {
+      messageLength: messageData.full.length,
+      activeThreadId,
+      hasAttachedImage: !!attachedImage
+    });
+    
+    if (activeThreadId) {
+      console.log('✅ [DEBUG] Using existing thread:', activeThreadId);
+      await sendUserMessage(messageData.full);
+    } else {
+      console.log('⚠️ [DEBUG] No active thread, creating one...');
+      
+      try {
+        // Import directService
+        const { directService } = await import('../../lib/services/directService');
+        const { useAppStore } = await import('../../stores/appStore');
+        
+        // Create a new thread
+        const threadTitle = `Chat ${new Date().toLocaleString()}`;
+        const newThread = await directService.createThread(threadTitle);
+        console.log('✅ [DEBUG] Thread created:', newThread);
+        
+        // Set as active thread in the store
+        useAppStore.setState(state => {
+          console.log('🔍 [DEBUG] Setting activeThreadId in store, before:', state.ui.activeThreadId);
+          return {
+            ui: {
+              ...state.ui,
+              activeThreadId: newThread.id
+            }
+          };
+        });
+        
+        // Get current state to verify thread was set
+        const currentState = useAppStore.getState();
+        console.log('✅ [DEBUG] Thread set in store:', {
+          newThreadId: newThread.id,
+          storeActiveThreadId: currentState.ui.activeThreadId,
+          match: currentState.ui.activeThreadId === newThread.id
+        });
+        
+        // Send message directly via service
+        console.log('🔍 [DEBUG] Sending message to new thread via directService');
+        await directService.sendMessage(newThread.id, {
+          content: messageData.full,
+          sender: 'user'
+        });
+      } catch (error) {
+        console.error('❌ [DEBUG] Error with thread creation/message:', error);
+        
+        // Use props method as fallback if available
+        if (propsSendMessage) {
+          console.log('⚠️ [DEBUG] Falling back to props.onSendMessage');
+          propsSendMessage(messageData, attachedImage);
+        } else {
+          console.error('❌ [DEBUG] No way to send message - both approaches failed');
+        }
+      }
+    }
+  }, [activeThreadId, sendUserMessage, propsSendMessage]);
+
+  const handleRemoveMessage = useCallback((messageId: string) => {
+    if (activeThreadId) {
+      deleteMessage(messageId).catch(err => {
+        console.error('Failed to delete message:', err);
+      });
+    } else if (propsRemoveMessage) {
+      propsRemoveMessage(messageId);
+    }
+  }, [activeThreadId, deleteMessage, propsRemoveMessage]);
+
+  const handleAIContinue = useCallback(() => {
+    if (activeThreadId && teamMembers.length > 0) {
+      const lastAI = teamMembers[0];
+      
+      streamAiMessage('', {
+        id: lastAI.id,
+        name: lastAI.name,
+        role: lastAI.role,
+        profileImage: lastAI.profileImage,
+        model: lastAI.model || 'gpt-4'
+      });
+    } else if (propsAIContinue) {
+      propsAIContinue();
+    }
+  }, [activeThreadId, teamMembers, streamAiMessage, propsAIContinue]);
+
+  useEffect(() => {
+    const aiMessages = activeThreadMessages.filter(msg => {
+      if ('message_data' in msg && msg.message_data) {
+        return msg.message_data.sender === 'ai';
+      }
+      return 'sender' in msg && msg.sender === 'ai';
+    });
+    
     const newAIMessageCount = aiMessages.length;
     
     if (newAIMessageCount > lastMessageCount) {
       setIncomingMessageCount(newAIMessageCount - lastMessageCount);
       setLastMessageCount(newAIMessageCount);
       
-      // Reset the incoming count after 5 seconds
       setTimeout(() => {
         setIncomingMessageCount(0);
       }, 5000);
     }
-  }, [messages, lastMessageCount]);
+  }, [activeThreadMessages, lastMessageCount]);
 
-  // Smart auto-scroll: always scroll to bottom unless user has manually scrolled up
+  // Scroll to bottom when messages change
   useEffect(() => {
-    if (!scrollAreaRef.current) return;
-    
-    // Always auto-scroll unless user has manually scrolled up
-    if (!isUserScrolledUp) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Only scroll if there are messages and messagesEndRef is available
+    if (messagesEndRef.current && activeThreadMessages.length > 0) {
+      // Use requestAnimationFrame to ensure DOM has updated
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      });
     }
-  }, [messages, isUserScrolledUp]);
+  }, [activeThreadMessages]);
 
-  // Track user scroll position to determine if they've scrolled up
-  const handleScroll = React.useCallback(() => {
-    if (!scrollAreaRef.current) return;
-    
-    const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-    if (scrollContainer) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      const isAtBottom = distanceFromBottom < 50;
-      
-
-      
-      // Update the scroll state: if user is at bottom, resume auto-scroll
-      setIsUserScrolledUp(!isAtBottom);
-    }
-  }, []);
-
-  // Set up scroll event listener for the viewport
-  useEffect(() => {
-    if (!scrollAreaRef.current) return;
-    
-    const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-    if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', handleScroll);
-      return () => scrollContainer.removeEventListener('scroll', handleScroll);
-    }
-  }, [handleScroll]);
-
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     setIsDragOver(true);
     
-    // Try to determine what's being dragged
     try {
       const dragData = e.dataTransfer.getData('application/json');
       if (dragData) {
@@ -140,15 +272,12 @@ const ChatSection: React.FC<ChatSectionProps> = ({
         }
       }
     } catch (error) {
-      // If we can't parse the data, assume it's an employee (default)
       setDragType('employee');
     }
-  };
+  }, []);
 
-  const handleDragLeave = (e: React.DragEvent) => {
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    // Only set isDragOver to false if we're actually leaving the chat section
-    // Check if the related target is outside the chat section
     const currentTarget = e.currentTarget as HTMLElement;
     const relatedTarget = e.relatedTarget as HTMLElement;
     
@@ -156,9 +285,9 @@ const ChatSection: React.FC<ChatSectionProps> = ({
       setIsDragOver(false);
       setDragType(null);
     }
-  };
+  }, []);
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
     setDragType(null);
@@ -173,9 +302,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
       const parsedData = JSON.parse(dragData);
       console.log('🚨 [CHAT SECTION DROP DEBUG] Parsed data:', parsedData);
       
-      // Check if this is a document drop
       if (parsedData.type === 'document' && parsedData.document) {
-        // Handle document drop - insert as mention in chat input
         const doc = parsedData.document;
         console.log('🚨 [CHAT SECTION DROP DEBUG] Document detected:', doc);
         console.log('🚨 [CHAT SECTION DROP DEBUG] insertDocumentMention handler exists:', !!insertDocumentMention);
@@ -187,14 +314,11 @@ const ChatSection: React.FC<ChatSectionProps> = ({
           console.error('Invalid document or missing mention handler:', { doc, hasHandler: !!insertDocumentMention });
         }
       }
-      // Check if this is a team drop (regular team or custom team) or individual employee drop
       else if ((parsedData.type === 'team' || parsedData.type === 'custom-team') && parsedData.employees) {
-        // Handle team drop - add all employees from the team at once
         if (onAddTeam) {
           onAddTeam(parsedData.employees);
         }
       } else {
-        // Handle individual employee drop (legacy behavior)
         const employee = parsedData;
         const isAlreadyMember = teamMembers.some(member => member.id === employee.id);
         if (!isAlreadyMember && onAddTeamMember) {
@@ -204,10 +328,21 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     } catch (error) {
       console.error('Error parsing dropped data:', error);
     }
-  };
+  }, [insertDocumentMention, onAddTeam, onAddTeamMember, teamMembers]);
 
-  // Filter out any demo messages (just in case)
-  const displayMessages = messages.filter(msg => !msg.id.startsWith('demo'));
+  // Memoize the filtered and normalized messages to prevent recreation on each render
+  const displayMessages = useMemo(() => {
+    const filtered = activeThreadMessages
+      .filter(msg => !msg.id.startsWith('demo'))
+      .map(normalizeMessage);
+      
+    return filtered;
+  }, [activeThreadMessages]);
+
+  // Function to set document mention handler
+  const handleSetDocumentMentionHandler = useCallback((handler: ((doc: Document) => void) | null) => {
+    setInsertDocumentMention(handler);
+  }, []);
 
   return (
     <div 
@@ -218,22 +353,22 @@ const ChatSection: React.FC<ChatSectionProps> = ({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Enhanced drop zone overlay */}
       {isDragOver && (
         <div className="absolute inset-0 bg-blue-100/80 dark:bg-blue-900/30 border-4 border-blue-400 dark:border-blue-500 border-dashed z-40 pointer-events-none">
           <div className="absolute inset-4 bg-blue-200/50 dark:bg-blue-800/30 border-2 border-blue-300 dark:border-blue-600 border-dashed rounded-lg"></div>
         </div>
       )}
       
-      {/* Main content area - adjusted for mobile input positioning */}
       <div className="flex flex-col flex-1 md:h-full overflow-hidden">
         <YourChatsSection
-          teams={teams}
+          threads={threads}
           activeThreadId={activeThreadId}
-          onSelectTeam={onSelectTeam}
-          onEditTeamName={onEditTeamName}
+          onSelectThread={onSelectThread}
+          onEditThreadName={onEditThreadName}
           onCreateChat={onCreateChat}
-          onDeleteTeam={onDeleteTeam}
+          onDeleteThread={onDeleteThread}
+          onClearChat={onClearChat}
+          hasMessages={displayMessages.length > 0}
         />
         
         <TeamMembersList
@@ -244,7 +379,6 @@ const ChatSection: React.FC<ChatSectionProps> = ({
         />
         
         <ScrollArea 
-          ref={scrollAreaRef}
           className="flex-grow px-4 pb-20 md:pb-4"
         >
           {isDragOver && (
@@ -317,7 +451,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
                   key={message.id} 
                   message={message} 
                   employees={employees}
-                  onRemoveMessage={onRemoveMessage}
+                  onRemoveMessage={handleRemoveMessage}
                 />
               ))}
               {isWaitingForStream && (
@@ -328,26 +462,31 @@ const ChatSection: React.FC<ChatSectionProps> = ({
                   </div>
                 </div>
               )}
+              {isMessagesLoading && (
+                <div className="flex justify-center mb-4">
+                  <div className="flex items-center space-x-2 text-neutral-500 dark:text-neutral-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Loading messages...</span>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
           )}
         </ScrollArea>
       </div>
       
-      {/* Message Input - Fixed to bottom on mobile, normal position on desktop */}
       <div className="md:relative fixed bottom-0 left-0 right-0 md:left-auto md:right-auto md:bottom-auto bg-white dark:bg-neutral-900 z-50 md:z-auto border-t md:border-t-0 border-neutral-200 dark:border-neutral-800">
         <MessageInputWithMentions
-          onSendMessage={onSendMessage}
+          onSendMessage={handleSendMessage}
           onUploadImage={onUploadImage}
-          onAIContinue={onAIContinue}
+          onAIContinue={handleAIContinue}
           employees={employees}
           teamMembers={teamMembers}
           isWaitingForStream={isWaitingForStream}
           incomingMessageCount={incomingMessageCount}
           globalSpacebarCount={globalSpacebarCount}
-          onSetDocumentMentionHandler={(handler) => {
-            setInsertDocumentMention(() => handler);
-          }}
+          onSetDocumentMentionHandler={handleSetDocumentMentionHandler}
         />
       </div>
     </div>
