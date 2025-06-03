@@ -8,6 +8,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { SupabaseDataService, IDataService } from './dataService';
+import { supabase } from '../supabase';
 import { getState } from '../../stores';
 import { 
   COAISynth, 
@@ -36,6 +37,7 @@ const memoryStore = {
 
 class DirectService implements IDataService {
   private dataService: SupabaseDataService | null = null;
+  private tempUserId: string | null = null;
   
   constructor() {
     // API base URL removed as it's not currently used
@@ -45,8 +47,157 @@ class DirectService implements IDataService {
   setUser(userId: string | null) {
     if (userId) {
       this.dataService = new SupabaseDataService(userId);
-      } else {
+      this.tempUserId = null;
+    } else {
       this.dataService = null;
+      // Don't create temporary user immediately - wait until they create their first thread
+      this.loadExistingTempUser();
+    }
+  }
+
+  // Load existing temporary user from localStorage if available
+  private async loadExistingTempUser() {
+    try {
+      // Check if we already have a temp user ID in localStorage
+      const existingTempUserId = localStorage.getItem('tempUserId');
+      
+      if (existingTempUserId) {
+        // Verify the temp user still exists in the new temp profiles table
+        const { data, error } = await supabase
+          .from('coai-temp-profiles')
+          .select('temp_user_id')
+          .eq('temp_user_id', existingTempUserId)
+          .single();
+        
+        if (!error && data) {
+          this.tempUserId = existingTempUserId;
+          this.dataService = new SupabaseDataService(existingTempUserId);
+          console.log('🔄 Using existing temporary user:', existingTempUserId);
+          return;
+        } else {
+          // Clean up invalid temp user ID
+          localStorage.removeItem('tempUserId');
+        }
+      }
+      
+      // No existing temp user found - will be created when needed
+      this.tempUserId = null;
+      this.dataService = null;
+      
+    } catch (error) {
+      console.error('Error loading existing temporary user:', error);
+      // Clean up on error
+      localStorage.removeItem('tempUserId');
+      this.tempUserId = null;
+      this.dataService = null;
+    }
+  }
+
+  // Create a temporary user profile when they first create a thread
+  private async createTempUserOnDemand(): Promise<boolean> {
+    try {
+      console.log('🔄 [DIRECT SERVICE] Creating temporary user on demand...');
+      
+      // Create new temporary user
+      const tempUserId = uuidv4();
+      const tempProfileData = {
+        isTemporary: true,
+        createdAt: new Date().toISOString(),
+        sessionId: uuidv4() // Additional tracking
+      };
+      
+      console.log('🔍 [DIRECT SERVICE] Inserting temp user profile:', tempUserId);
+      
+      // Insert into the new temp profiles table (no foreign key constraints!)
+      const { error } = await supabase
+        .from('coai-temp-profiles')
+        .insert({
+          temp_user_id: tempUserId,
+          profile_data: tempProfileData
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('❌ [DIRECT SERVICE] Failed to create temporary user:', error);
+        return false;
+      }
+      
+      this.tempUserId = tempUserId;
+      this.dataService = new SupabaseDataService(tempUserId);
+      
+      // Store temp user ID in localStorage for session persistence
+      localStorage.setItem('tempUserId', tempUserId);
+      
+      console.log('✨ [DIRECT SERVICE] Created new temporary user on demand:', tempUserId);
+      console.log('✅ [DIRECT SERVICE] DataService initialized for temp user');
+      return true;
+      
+    } catch (error) {
+      console.error('❌ [DIRECT SERVICE] Error creating temporary user on demand:', error);
+      return false;
+    }
+  }
+
+  // Clean up temporary user data when user signs up (call this when converting to real user)
+  async convertTempUserToRealUser(realUserId: string): Promise<void> {
+    if (!this.tempUserId) return;
+    
+    try {
+      console.log('🔄 Converting temporary user to real user:', this.tempUserId, '->', realUserId);
+      
+      // Update all temp user's data to belong to the real user
+      await Promise.all([
+        // Update synths
+        supabase
+          .from('coai-synths')
+          .update({ user_id: realUserId })
+          .eq('user_id', this.tempUserId),
+        
+        // Update teams
+        supabase
+          .from('coai-teams')
+          .update({ user_id: realUserId })
+          .eq('user_id', this.tempUserId),
+        
+        // Update threads
+        supabase
+          .from('coai-threads')
+          .update({ user_id: realUserId })
+          .eq('user_id', this.tempUserId),
+        
+        // Update messages
+        supabase
+          .from('coai-messages')
+          .update({ user_id: realUserId })
+          .eq('user_id', this.tempUserId),
+        
+        // Update team-synths relationships
+        supabase
+          .from('coai-team-synths')
+          .update({ user_id: realUserId })
+          .eq('user_id', this.tempUserId),
+        
+        // Update thread-synths relationships
+        supabase
+          .from('coai-thread-synths')
+          .update({ user_id: realUserId })
+          .eq('user_id', this.tempUserId)
+      ]);
+      
+      // Delete temporary profile from the new temp table
+      await supabase
+        .from('coai-temp-profiles')
+        .delete()
+        .eq('temp_user_id', this.tempUserId);
+      
+      // Clear localStorage
+      localStorage.removeItem('tempUserId');
+      
+      console.log('✅ Successfully converted temporary user to real user');
+      
+    } catch (error) {
+      console.error('Error converting temporary user:', error);
     }
   }
   
@@ -93,7 +244,22 @@ class DirectService implements IDataService {
   }
   
   isAuthenticated(): boolean {
-    return !!this.dataService;
+    return !!this.dataService && !this.tempUserId;
+  }
+  
+  // Check if using temporary user (for UI logic)
+  isTemporaryUser(): boolean {
+    return !!this.tempUserId;
+  }
+  
+  // Get current user ID (temporary or authenticated)
+  getCurrentUserId(): string | null {
+    return this.tempUserId || (this.dataService ? this.dataService.getUserId() : null);
+  }
+  
+  // Get temporary user ID (for conversion purposes)
+  getTempUserId(): string | null {
+    return this.tempUserId;
   }
   
 
@@ -294,10 +460,41 @@ class DirectService implements IDataService {
   }
   
   async createThread(title: string): Promise<Thread> {
-    if (this.dataService) {
-      return this.dataService.createThread(title);
+    console.log('🔍 [DIRECT SERVICE] createThread called with title:', title);
+    console.log('🔍 [DIRECT SERVICE] Current state - dataService:', !!this.dataService, 'tempUserId:', this.tempUserId);
+    
+    // If no dataService exists (unauthenticated), create temp user on demand
+    if (!this.dataService) {
+      console.log('🔄 No dataService found, creating temporary user on demand...');
+      const tempUserCreated = await this.createTempUserOnDemand();
+      
+      if (!tempUserCreated) {
+        console.log('⚠️ Failed to create temp user, falling back to memory storage');
+        // Fall back to memory storage
+        const thread: Thread = {
+          id: uuidv4(),
+          title,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        
+        memoryStore.threads.set(thread.id, thread);
+        console.log('✅ [DIRECT SERVICE] Created thread in memory storage:', thread.id);
+        return thread;
+      }
     }
     
+    // Use dataService (either existing authenticated or newly created temp user)
+    if (this.dataService) {
+      console.log('✅ [DIRECT SERVICE] Using dataService to create thread');
+      const thread = await this.dataService.createThread(title);
+      console.log('✅ [DIRECT SERVICE] Thread created via dataService:', thread.id);
+      return thread;
+    }
+    
+    // Final fallback to memory storage (should rarely happen)
+    console.log('⚠️ [DIRECT SERVICE] Final fallback to memory storage');
     const thread: Thread = {
       id: uuidv4(),
       title,
@@ -307,6 +504,7 @@ class DirectService implements IDataService {
     };
     
     memoryStore.threads.set(thread.id, thread);
+    console.log('✅ [DIRECT SERVICE] Created thread in final fallback:', thread.id);
     return thread;
   }
 

@@ -176,3 +176,64 @@ Before proceeding with Phase 3, validate that the Zustand implementation is read
 - Architecture Plan: See `ARCHITECTURE.md`
 - UI Interface Documentation: See `INTERFACE.md`
 
+## COAI Project TODO List
+
+### ✅ COMPLETED TASKS
+
+#### Authentication & User Management
+- ✅ **Temporary User System**: Created `coai-temp-profiles` table for unauthenticated users
+- ✅ **Lazy Temp User Creation**: Temporary users are only created when they first create a thread
+- ✅ **RLS Policy Updates**: Updated all RLS policies to support temporary users
+  - ✅ `coai-threads` - Allow temp users to manage their own threads
+  - ✅ `coai-synths` - Allow temp users to manage their own synths  
+  - ✅ `coai-teams` - Allow temp users to manage their own teams
+  - ✅ `coai-messages` - Allow temp users to manage messages in their threads
+  - ✅ `coai-thread-synths` - Allow temp users to manage synths in their threads
+- ✅ **Session Persistence**: Temporary user data persists across browser sessions via localStorage
+- ✅ **User Conversion**: Framework ready for converting temp users to real users when they sign up
+
+#### Public Data Access
+- ✅ **Public Synths Visibility**: Unauthenticated users can see all public synths (39 synths)
+- ✅ **Public Teams Visibility**: Unauthenticated users can see all public teams (7 teams)
+- ✅ **Team Synths Loading**: Public teams show synth images and data correctly
+- ✅ **UI Sub-tabs**: Added Private/Public sub-tabs with eye icons for better organization
+
+#### Database & Infrastructure
+- ✅ **Database Schema**: All tables properly configured with JSONB data fields
+- ✅ **RLS Policies**: Row Level Security working for both authenticated and temporary users
+- ✅ **Data Migration**: All existing teams updated to have `isPublic = true`
+
+### 🔄 IN PROGRESS
+
+#### Testing & Verification
+- 🔄 **Thread Creation Testing**: Verifying temporary user thread creation works end-to-end
+- 🔄 **Message Flow Testing**: Testing AI conversations for temporary users
+- 🔄 **User Conversion Testing**: Testing temp-to-real user conversion flow
+
+### 📋 PENDING TASKS
+
+#### User Experience
+- 📋 **Sign-up Prompts**: Add gentle prompts for temporary users to create accounts
+- 📋 **Data Migration UI**: Show users what data will be preserved when they sign up
+- 📋 **Temporary User Indicators**: Visual indicators that user is in temporary mode
+
+#### Performance & Cleanup
+- 📋 **Temp User Cleanup**: Implement automatic cleanup of expired temporary users (30+ days)
+- 📋 **Performance Optimization**: Optimize queries for public data loading
+- 📋 **Error Handling**: Improve error handling for temporary user edge cases
+
+#### Advanced Features
+- 📋 **Offline Support**: Consider offline capabilities for temporary users
+- 📋 **Export Functionality**: Allow temporary users to export their conversations
+
+### 🚨 CURRENT FOCUS
+
+**Testing temporary user thread creation** - Verifying that the RLS policy updates allow temporary users to successfully create threads and have full functionality.
+
+### 📝 NOTES
+
+- Temporary users are created with UUID-based IDs stored in `coai-temp-profiles`
+- All RLS policies now support both `auth.uid()` (authenticated) and temp user validation
+- Session persistence uses localStorage with fallback to memory storage
+- Ready for production deployment with temporary user support
+

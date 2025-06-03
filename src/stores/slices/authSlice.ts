@@ -674,6 +674,22 @@ export const createAuthSlice: StateCreator<
     try {
       console.log('🔍 DEBUG: _createProfile called for userId:', userId);
       
+      // Check if there's a temporary user to convert
+      const tempUserId = localStorage.getItem('tempUserId');
+      if (tempUserId) {
+        console.log('🔄 Converting temporary user to real user:', tempUserId, '->', userId);
+        
+        try {
+          // Import directService to handle the conversion
+          const { directService } = await import('../../lib/services/directService');
+          await directService.convertTempUserToRealUser(userId);
+          console.log('✅ Successfully converted temporary user data');
+        } catch (conversionError) {
+          console.error('❌ Error converting temporary user:', conversionError);
+          // Continue with profile creation even if conversion fails
+        }
+      }
+      
       const user = get().user;
       
       if (!user) {

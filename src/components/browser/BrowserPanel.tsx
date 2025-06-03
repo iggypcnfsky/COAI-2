@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, Bot, FileText, Plus, PanelLeftClose } from 'lucide-react';
+import { Users, Bot, FileText, Plus, PanelLeftClose, Eye, EyeOff } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import { useAuth } from '@/hooks/store/useAuth';
 interface BrowserPanelProps {
   employees?: AIEmployee[];
   customSynths: AIEmployee[];
+  publicSynths?: AIEmployee[];
   onSelectEmployee: (employee: AIEmployee) => void;
   onQuickAdd: (employee: AIEmployee) => void;
   onQuickAddTeam: (employees: AIEmployee[]) => void;
@@ -35,6 +36,7 @@ interface BrowserPanelProps {
 
 const BrowserPanel: React.FC<BrowserPanelProps> = ({
   customSynths = [],
+  publicSynths = [],
   onSelectEmployee,
   onQuickAdd,
   onQuickAddTeam,
@@ -48,9 +50,24 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
   onToggleCollapse,
 }) => {
   // Get auth state from the legacy context (which now uses Zustand)
-  const { } = useAuth();
+  const { user } = useAuth();
   
   const [activeTab, setActiveTab] = useState('teams');
+  const [teamsSubTab, setTeamsSubTab] = useState(user ? 'private' : 'public');
+  const [synthsSubTab, setSynthsSubTab] = useState(user ? 'private' : 'public');
+
+  // Update sub-tabs when user authentication state changes
+  React.useEffect(() => {
+    if (user) {
+      // User is logged in, default to private tabs
+      setTeamsSubTab('private');
+      setSynthsSubTab('private');
+    } else {
+      // User is not logged in, default to public tabs
+      setTeamsSubTab('public');
+      setSynthsSubTab('public');
+    }
+  }, [user]);
   const [isCreateSynthModalOpen, setIsCreateSynthModalOpen] = useState(false);
   const [isEditSynthModalOpen, setIsEditSynthModalOpen] = useState(false);
   const [isCreateTeamModalOpen, setIsCreateTeamModalOpen] = useState(false);
@@ -418,40 +435,84 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
     <div className="h-full flex flex-col bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
         {/* Tab Navigation */}
-        <div className="p-3 border-b border-neutral-200 dark:border-neutral-800">
-          <div className="flex items-center justify-between mb-3">
-            <TabsList className="grid grid-cols-3 flex-1">
-              <TabsTrigger value="teams" className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                <span className="hidden sm:inline">Teams</span>
-              </TabsTrigger>
-              <TabsTrigger value="synths" className="flex items-center gap-2">
-                <Bot className="h-4 w-4" />
-                <span className="hidden sm:inline">Synths</span>
-              </TabsTrigger>
-              <TabsTrigger value="files" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                <span className="hidden sm:inline">Files</span>
-              </TabsTrigger>
-            </TabsList>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onToggleCollapse}
-              className="ml-2 h-6 w-6 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-              title="Hide browser (⌘+B)"
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </Button>
+        <div className="border-b border-neutral-200 dark:border-neutral-800">
+          <div className="p-3">
+            <div className="flex items-center justify-between">
+              <TabsList className="grid grid-cols-3 flex-1">
+                <TabsTrigger value="teams" className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  <span className="hidden sm:inline">Teams</span>
+                </TabsTrigger>
+                <TabsTrigger value="synths" className="flex items-center gap-2">
+                  <Bot className="h-4 w-4" />
+                  <span className="hidden sm:inline">Synths</span>
+                </TabsTrigger>
+                <TabsTrigger value="files" className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  <span className="hidden sm:inline">Files</span>
+                </TabsTrigger>
+              </TabsList>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onToggleCollapse}
+                className="ml-2 h-6 w-6 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+                title="Hide browser (⌘+B)"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
+          
+          {/* Sub-tabs for Teams and Synths */}
+          {(activeTab === 'teams' || activeTab === 'synths') && (
+            <div className="px-3 pb-3">
+              <div className="flex gap-1 bg-neutral-100 dark:bg-neutral-800 rounded-lg p-1">
+                {user && (
+                  <button
+                    onClick={() => activeTab === 'teams' ? setTeamsSubTab('private') : setSynthsSubTab('private')}
+                    className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2 ${
+                      (activeTab === 'teams' ? teamsSubTab : synthsSubTab) === 'private'
+                        ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-sm'
+                        : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+                    }`}
+                  >
+                    <EyeOff className="h-4 w-4" />
+                    <span>Private</span>
+                    <span className="text-xs opacity-70">
+                      ({activeTab === 'teams' 
+                        ? customTeams.length + loadingTeams.length 
+                        : customSynths.length + loadingSynths.length + loadingTeamSynths.length
+                      })
+                    </span>
+                  </button>
+                )}
+                <button
+                  onClick={() => activeTab === 'teams' ? setTeamsSubTab('public') : setSynthsSubTab('public')}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2 ${
+                    (activeTab === 'teams' ? teamsSubTab : synthsSubTab) === 'public'
+                      ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-sm'
+                      : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+                  }`}
+                >
+                  <Eye className="h-4 w-4" />
+                  <span>Public</span>
+                  <span className="text-xs opacity-70">
+                    ({activeTab === 'teams' ? publicTeams.length : publicSynths.length})
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Tab Content */}
         <div className="flex-1 overflow-hidden">
           <TabsContent value="teams" className="h-full m-0">
-            <ScrollArea className="h-full">
-              <div className="p-3">
-                <div className="flex items-center justify-between mb-3">
+            <div className="h-full flex flex-col">
+              {/* Teams Header */}
+              <div className="p-3 border-b border-neutral-200 dark:border-neutral-800">
+                <div className="flex items-center justify-between">
                   <div className="flex text-xs text-neutral-500 dark:text-neutral-400 items-center gap-1">
                     <span>💡</span>
                     <span>Drag teams to the chat</span>
@@ -466,64 +527,80 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
                     Create new team
                   </Button>
                 </div>
-
-                {/* Custom Teams Section */}
-                {(customTeams && customTeams.length > 0) || loadingTeams.length > 0 ? (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      Your Custom Teams ({customTeams.length + loadingTeams.length})
-                    </h3>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
-                      {/* Loading teams */}
-                      {loadingTeams.map((loadingTeam) => (
-                        <LoadingTeamCard
-                          key={loadingTeam.id}
-                          prompt={`Creating ${loadingTeam.keywords} team...`}
-                          onCancel={() => handleCancelTeamGeneration(loadingTeam.id)}
-                        />
-                      ))}
-                      
-                      {/* Existing custom teams */}
-                      {customTeams.map((team) => (
-                        <CustomTeamCard
-                          key={team.id}
-                          team={team}
-                          onClick={onSelectTeam}
-                          onQuickAdd={handleQuickAddCustomTeam}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* Public Teams Section */}
-                {publicTeams && publicTeams.length > 0 ? (
-                  <div>
-                    <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      Public Teams ({publicTeams.length})
-                    </h3>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                      {publicTeams.map((team) => (
-                        <CustomTeamCard
-                          key={team.id}
-                          team={team}
-                          onClick={onSelectTeam}
-                          onQuickAdd={handleQuickAddCustomTeam}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
               </div>
-            </ScrollArea>
+              
+              {/* Teams Content */}
+              <ScrollArea className="flex-1">
+                <div className="p-3">
+                  {/* Private Teams */}
+                  {teamsSubTab === 'private' && user && (
+                    <div>
+                      {(customTeams && customTeams.length > 0) || loadingTeams.length > 0 ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          {/* Loading teams */}
+                          {loadingTeams.map((loadingTeam) => (
+                            <LoadingTeamCard
+                              key={loadingTeam.id}
+                              prompt={`Creating ${loadingTeam.keywords} team...`}
+                              onCancel={() => handleCancelTeamGeneration(loadingTeam.id)}
+                            />
+                          ))}
+                          
+                          {/* Existing custom teams */}
+                          {customTeams.map((team) => (
+                            <CustomTeamCard
+                              key={team.id}
+                              team={team}
+                              onClick={onSelectTeam}
+                              onQuickAdd={handleQuickAddCustomTeam}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-neutral-500 dark:text-neutral-400">
+                          <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                          <p className="text-sm">No private teams yet</p>
+                          <p className="text-xs mt-1">Create your first team to get started</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Public Teams */}
+                  {teamsSubTab === 'public' && (
+                    <div>
+                      {publicTeams && publicTeams.length > 0 ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          {publicTeams.map((team) => (
+                            <CustomTeamCard
+                              key={team.id}
+                              team={team}
+                              onClick={onSelectTeam}
+                              onQuickAdd={handleQuickAddCustomTeam}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-neutral-500 dark:text-neutral-400">
+                          <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                          <p className="text-sm">No public teams available</p>
+                          <p className="text-xs mt-1">Check back later for community teams</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+
+                </div>
+              </ScrollArea>
+            </div>
           </TabsContent>
 
           <TabsContent value="synths" className="h-full m-0">
-            <ScrollArea className="h-full">
-              <div className="p-3">
-                <div className="flex items-center justify-between mb-3">
+            <div className="h-full flex flex-col">
+              {/* Synths Header */}
+              <div className="p-3 border-b border-neutral-200 dark:border-neutral-800">
+                <div className="flex items-center justify-between">
                   <div className="flex text-xs text-neutral-500 dark:text-neutral-400 items-center gap-1">
                     <span>💡</span>
                     <span>Drag individual synths to the chat</span>
@@ -538,57 +615,91 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
                     Create new synth
                   </Button>
                 </div>
-
-                {/* Custom Synths Section */}
-                {(customSynths && customSynths.length > 0) || loadingSynths.length > 0 || loadingTeamSynths.length > 0 ? (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3 flex items-center gap-2">
-                      <Bot className="h-4 w-4" />
-                      Your Custom Synths ({customSynths.length + loadingSynths.length + loadingTeamSynths.length})
-                    </h3>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2 mb-4">
-                      {/* Loading synths */}
-                      {loadingSynths.map((loadingSynth) => (
-                        <LoadingSynthCard
-                          key={loadingSynth.id}
-                          synthName={`AI Synth`}
-                          synthRole={`${loadingSynth.keywords} specialist`}
-                          onCancel={() => handleCancelGeneration(loadingSynth.id)}
-                        />
-                      ))}
-                      
-                      {/* Loading team synths */}
-                      {loadingTeamSynths.map((loadingTeamSynth) => (
-                        <LoadingSynthCard
-                          key={loadingTeamSynth.id}
-                          synthName={loadingTeamSynth.name}
-                          synthRole={loadingTeamSynth.role}
-                          profileImage={loadingTeamSynth.profileImage}
-                          onCancel={() => {
-                            setLoadingTeamSynths(prev => prev.filter(lts => lts.id !== loadingTeamSynth.id));
-                          }}
-                        />
-                      ))}
-                      
-                      {/* Existing custom synths */}
-                      {customSynths.map((synth) => (
-                        <CustomSynthCard
-                          key={synth.id}
-                          employee={synth}
-                          onClick={onSelectEmployee}
-                          onQuickAdd={onQuickAdd}
-
-                          onDelete={handleDeleteSynth}
-                          onUpdateSynth={onEditSynth}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-
               </div>
-            </ScrollArea>
+              
+              {/* Synths Content */}
+              <ScrollArea className="flex-1">
+                <div className="p-3">
+                  {/* Private Synths */}
+                  {synthsSubTab === 'private' && user && (
+                    <div>
+                      {(customSynths && customSynths.length > 0) || loadingSynths.length > 0 || loadingTeamSynths.length > 0 ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2">
+                          {/* Loading synths */}
+                          {loadingSynths.map((loadingSynth) => (
+                            <LoadingSynthCard
+                              key={loadingSynth.id}
+                              synthName={`AI Synth`}
+                              synthRole={`${loadingSynth.keywords} specialist`}
+                              onCancel={() => handleCancelGeneration(loadingSynth.id)}
+                            />
+                          ))}
+                          
+                          {/* Loading team synths */}
+                          {loadingTeamSynths.map((loadingTeamSynth) => (
+                            <LoadingSynthCard
+                              key={loadingTeamSynth.id}
+                              synthName={loadingTeamSynth.name}
+                              synthRole={loadingTeamSynth.role}
+                              profileImage={loadingTeamSynth.profileImage}
+                              onCancel={() => {
+                                setLoadingTeamSynths(prev => prev.filter(lts => lts.id !== loadingTeamSynth.id));
+                              }}
+                            />
+                          ))}
+                          
+                          {/* Existing custom synths */}
+                          {customSynths.map((synth) => (
+                            <CustomSynthCard
+                              key={synth.id}
+                              employee={synth}
+                              onClick={onSelectEmployee}
+                              onQuickAdd={onQuickAdd}
+                              onDelete={handleDeleteSynth}
+                              onUpdateSynth={onEditSynth}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-neutral-500 dark:text-neutral-400">
+                          <Bot className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                          <p className="text-sm">No private synths yet</p>
+                          <p className="text-xs mt-1">Create your first synth to get started</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Public Synths */}
+                  {synthsSubTab === 'public' && (
+                    <div>
+                      {publicSynths && publicSynths.length > 0 ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2">
+                          {publicSynths.map((synth) => (
+                            <CustomSynthCard
+                              key={synth.id}
+                              employee={synth}
+                              onClick={onSelectEmployee}
+                              onQuickAdd={onQuickAdd}
+                              onDelete={undefined} // Public synths can't be deleted by other users
+                              onUpdateSynth={undefined} // Public synths can't be edited by other users
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-neutral-500 dark:text-neutral-400">
+                          <Bot className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                          <p className="text-sm">No public synths available</p>
+                          <p className="text-xs mt-1">Check back later for community synths</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+
+                </div>
+              </ScrollArea>
+            </div>
           </TabsContent>
 
           <TabsContent value="files" className="h-full m-0">

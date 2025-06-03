@@ -79,6 +79,10 @@ export class SupabaseDataService implements IDataService {
     return true;
   }
   
+  getUserId(): string {
+    return this.userId;
+  }
+  
   // SYNTHS
   async fetchSynths(): Promise<COAISynth[]> {
     const { data, error } = await supabase
@@ -324,7 +328,7 @@ export class SupabaseDataService implements IDataService {
     const { data, error } = await supabase
       .from('coai-threads')
       .insert({
-        user_id: this.userId,
+        user_id: this.userId || null, // Allow NULL for unauthenticated users
         thread_data: threadData,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -643,19 +647,34 @@ export class DataService {
    */
   static async fetchPublicSynths(userId?: string): Promise<COAISynth[]> {
     try {
+      console.log('🔍 [DATASERVICE DEBUG] fetchPublicSynths called with userId:', userId);
+      
       let query = supabase
         .from('coai-synths')
         .select('*');
       
       if (userId) {
-        query = query.or(`synth_data->isPublic.eq.true,user_id.eq.${userId}`);
+        console.log('🔍 [DATASERVICE DEBUG] Authenticated user - fetching public + user synths');
+        // For authenticated users: fetch public synths OR user's own synths
+        query = query.or(`synth_data->>isPublic.eq.true,user_id.eq.${userId}`);
       } else {
-        query = query.eq('synth_data->isPublic', true);
+        console.log('🔍 [DATASERVICE DEBUG] Unauthenticated user - fetching only public synths');
+        // For unauthenticated users: only fetch public synths
+        query = query.eq('synth_data->>isPublic', 'true');
       }
       
+      // Order by creation time (newest first)
+      query = query.order('created_at', { ascending: false });
+      
+      console.log('🔍 [DATASERVICE DEBUG] Executing query...');
       const { data, error } = await query;
       
-      if (error) throw error;
+      if (error) {
+        console.error('🔍 [DATASERVICE DEBUG] Query error:', error);
+        throw error;
+      }
+      
+      console.log('🔍 [DATASERVICE DEBUG] Query result:', data?.length || 0, 'synths found');
       
       return data as COAISynth[];
     } catch (error) {
@@ -669,22 +688,34 @@ export class DataService {
    */
   static async fetchPublicTeams(userId?: string): Promise<COAITeam[]> {
     try {
+      console.log('🔍 [DATASERVICE DEBUG] fetchPublicTeams called with userId:', userId);
+      
       let query = supabase
         .from('coai-teams')
         .select('*');
       
       if (userId) {
-        query = query.or(`team_data->isPublic.eq.true,user_id.eq.${userId}`);
+        console.log('🔍 [DATASERVICE DEBUG] Authenticated user - fetching public + user teams');
+        // For authenticated users: fetch public teams OR user's own teams
+        query = query.or(`team_data->>isPublic.eq.true,user_id.eq.${userId}`);
       } else {
-        query = query.eq('team_data->isPublic', true);
+        console.log('🔍 [DATASERVICE DEBUG] Unauthenticated user - fetching only public teams');
+        // For unauthenticated users: only fetch public teams
+        query = query.eq('team_data->>isPublic', 'true');
       }
       
       // Order by creation time (newest first)
       query = query.order('created_at', { ascending: false });
       
+      console.log('🔍 [DATASERVICE DEBUG] Executing teams query...');
       const { data, error } = await query;
       
-      if (error) throw error;
+      if (error) {
+        console.error('🔍 [DATASERVICE DEBUG] Teams query error:', error);
+        throw error;
+      }
+      
+      console.log('🔍 [DATASERVICE DEBUG] Teams query result:', data?.length || 0, 'teams found');
       
       return data as COAITeam[];
     } catch (error) {

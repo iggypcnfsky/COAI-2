@@ -40,8 +40,12 @@ export const createSynthsSlice: StateCreator<
       const { session } = get();
       const userId = session?.user?.id;
       
+      console.log('🔍 [SYNTHS STORE DEBUG] Fetching synths with userId:', userId);
+      
       // Use the DataService to fetch public synths and optionally user's synths
       const synths = await DataService.fetchPublicSynths(userId);
+      
+      console.log('🔍 [SYNTHS STORE DEBUG] Fetched synths:', synths.length, synths);
       
       // Normalize synths by ID
       const normalizedSynths = normalizeArray(synths as COAISynth[]);
