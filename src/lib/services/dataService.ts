@@ -60,6 +60,7 @@ export interface IDataService {
   addSynthToThread(threadId: string, synthId: string, reference: COAITeamSynthReference): Promise<void>;
   removeSynthFromThread(threadId: string, synthId: string): Promise<void>;
   getThreadSynths(threadId: string): Promise<COAITeamSynth[]>;
+  updateThreadSynthReference(threadId: string, synthId: string, reference: Partial<COAITeamSynthReference>): Promise<void>;
   
   // User preferences
   getActiveThreadId(): Promise<string | null>;
@@ -519,6 +520,35 @@ export class SupabaseDataService implements IDataService {
     
     if (error) throw error;
     return data || [];
+  }
+
+  async updateThreadSynthReference(threadId: string, synthId: string, reference: Partial<COAITeamSynthReference>): Promise<void> {
+    // Fetch current reference
+    const { data: currentData, error: fetchError } = await supabase
+      .from('coai-thread-synths')
+      .select('synth_reference')
+      .eq('thread_id', threadId)
+      .eq('synth_id', synthId)
+      .single();
+      
+    if (fetchError) throw fetchError;
+    
+    const currentReference = currentData.synth_reference;
+    
+    // Merge with updates
+    const updatedReference = {
+      ...currentReference,
+      ...reference
+    };
+    
+    // Update in database
+    const { error: updateError } = await supabase
+      .from('coai-thread-synths')
+      .update({ synth_reference: updatedReference })
+      .eq('thread_id', threadId)
+      .eq('synth_id', synthId);
+      
+    if (updateError) throw updateError;
   }
   
   // USER PREFERENCES

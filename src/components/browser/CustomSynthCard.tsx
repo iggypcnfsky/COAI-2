@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Edit, Trash2, Loader2, PlusCircle } from 'lucide-react';
+import { Trash2, Loader2, PlusCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AIEmployee } from '@/types';
@@ -9,7 +9,6 @@ interface CustomSynthCardProps {
   employee: AIEmployee;
   onClick: (employee: AIEmployee) => void;
   onQuickAdd: (employee: AIEmployee) => void;
-  onEdit?: (employee: AIEmployee) => void;
   onDelete?: (employeeId: string) => void;
   onUpdateSynth?: (updatedSynth: AIEmployee) => void;
 }
@@ -18,7 +17,6 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
   employee,
   onClick,
   onQuickAdd,
-  onEdit,
   onDelete,
 
 }) => {
@@ -71,12 +69,7 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
     onQuickAdd(employee);
   };
 
-  const handleEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onEdit) {
-      onEdit(employee);
-    }
-  };
+
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -126,18 +119,7 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
           <div className="flex gap-2 relative z-10">
             {/* Image regeneration button - removed per request */}
             
-            {/* Edit button for custom synths */}
-            {onEdit && (
-              <Button
-                size="icon"
-                variant="secondary"
-                className="h-8 w-8 bg-white/20 hover:bg-white/30 backdrop-blur-sm border-0 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300"
-                onClick={handleEdit}
-                title="Edit synth"
-              >
-                <Edit className="h-4 w-4 text-white" />
-              </Button>
-            )}
+
             {/* Delete button for custom synths */}
             {onDelete && (
               <Button

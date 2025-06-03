@@ -6,6 +6,7 @@ export interface AIEmployee {
   name: string;
   role: string;
   age: number;
+  gender?: 'male' | 'female' | 'non-binary' | 'any';
   profileImage: string;
   bio?: string;
   experience?: string[];
@@ -102,6 +103,7 @@ export interface COAISynthData {
   name: string;
   role: string;
   age: number;
+  gender?: 'male' | 'female' | 'non-binary' | 'any';
   profileImage: string;
   bio?: string;
   experience?: string[];

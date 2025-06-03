@@ -464,6 +464,19 @@ class DirectService implements IDataService {
     }));
   }
 
+  async updateThreadSynthReference(threadId: string, synthId: string, reference: Partial<COAITeamSynthReference>): Promise<void> {
+    if (this.dataService) {
+      return this.dataService.updateThreadSynthReference(threadId, synthId, reference);
+    }
+    
+    const threadSynths = memoryStore.teamSynths.get(threadId);
+    if (threadSynths && threadSynths.has(synthId)) {
+      const currentReference = threadSynths.get(synthId)!;
+      const updatedReference = { ...currentReference, ...reference };
+      threadSynths.set(synthId, updatedReference);
+    }
+  }
+
   // USER PREFERENCES
   async getActiveThreadId(): Promise<string | null> {
     if (this.dataService) {

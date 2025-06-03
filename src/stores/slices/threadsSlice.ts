@@ -19,6 +19,7 @@ export interface ThreadsState {
   addSynthToThread: (threadId: string, synthId: string, reference: COAITeamSynthReference) => Promise<void>;
   removeSynthFromThread: (threadId: string, synthId: string) => Promise<void>;
   getThreadSynths: (threadId: string) => Promise<COAITeamSynth[]>;
+  updateThreadSynthReference: (threadId: string, synthId: string, reference: Partial<COAITeamSynthReference>) => Promise<void>;
 }
 
 export const createThreadsSlice: StateCreator<
@@ -576,6 +577,18 @@ export const createThreadsSlice: StateCreator<
         }
       }), false, 'threads/removeSynthFromThread/revert');
       
+      throw error;
+    }
+  },
+
+  updateThreadSynthReference: async (threadId: string, synthId: string, reference: Partial<COAITeamSynthReference>) => {
+    try {
+      // Update thread-synth reference in database
+      await directService.updateThreadSynthReference(threadId, synthId, reference);
+      
+      // Success - no need for optimistic updates since this is just metadata
+    } catch (error) {
+      console.error(`Error updating reference for synth ${synthId} in thread ${threadId}:`, error);
       throw error;
     }
   }

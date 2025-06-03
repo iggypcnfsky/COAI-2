@@ -149,6 +149,7 @@ export interface RootState {
   addSynthToThread: (threadId: string, synthId: string, reference: COAITeamSynthReference) => Promise<void>;
   removeSynthFromThread: (threadId: string, synthId: string) => Promise<void>;
   getThreadSynths: (threadId: string) => Promise<COAITeamSynth[]>;
+  updateThreadSynthReference: (threadId: string, synthId: string, reference: Partial<COAITeamSynthReference>) => Promise<void>;
   
   // Messages slice methods will be injected here
   fetchMessages: (threadId: string, options?: { limit?: number; before?: Date }) => Promise<COAIMessage[]>;

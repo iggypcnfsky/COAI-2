@@ -125,7 +125,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   const addSynthToThread = useAppStore(state => state.addSynthToThread);
   const removeSynthFromThread = useAppStore(state => state.removeSynthFromThread);
   const getThreadSynths = useAppStore(state => state.getThreadSynths);
-  const updateTeamSynthReference = useAppStore(state => state.updateTeamSynthReference);
+  const updateThreadSynthReference = useAppStore(state => state.updateThreadSynthReference);
   const switchThread = useAppStore(state => state.switchThread);
   
   // Function to refetch thread synths
@@ -555,6 +555,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           name: newSynth.name,
           role: newSynth.role,
           age: newSynth.age,
+          gender: newSynth.gender,
           profileImage: newSynth.profileImage,
           bio: newSynth.bio,
           experience: newSynth.experience,
@@ -617,17 +618,18 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           
           // Update in Supabase if user is authenticated
           if (user) {
-            updateSynth(finalSynth.id, {
-              name: updatedSynth.name,
-              role: updatedSynth.role,
-              age: updatedSynth.age,
-              profileImage: realProfileImage,
-              bio: updatedSynth.bio,
-              experience: updatedSynth.experience,
-              systemPrompt: updatedSynth.systemPrompt,
-              baseModel: updatedSynth.baseModel,
-              metadata: {}
-            }).catch(error => console.error('❌ Failed to update synth image in Supabase:', error));
+                      updateSynth(finalSynth.id, {
+            name: updatedSynth.name,
+            role: updatedSynth.role,
+            age: updatedSynth.age,
+            gender: updatedSynth.gender,
+            profileImage: realProfileImage,
+            bio: updatedSynth.bio,
+            experience: updatedSynth.experience,
+            systemPrompt: updatedSynth.systemPrompt,
+            baseModel: updatedSynth.baseModel,
+            metadata: {}
+          }).catch(error => console.error('❌ Failed to update synth image in Supabase:', error));
           }
         }).catch((imageError) => {
           console.error('⚠️ Background image generation failed for:', finalSynth.name, imageError);
@@ -658,39 +660,148 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     }
   }, [user, createSynth, updateSynth]);
 
-  // Handler for editing custom synth
-  const handleEditSynth = React.useCallback(async (updatedSynth: AIEmployee) => {
-    // Update local state first for immediate UI update
-    setCustomSynths(prev => 
-      prev.map(synth => synth.id === updatedSynth.id ? updatedSynth : synth)
-    );
+  // Unified handler for editing both synths and team members
+  const handleUpdateProfile = React.useCallback(async (profile: AIEmployee | TeamMember, updates: { name?: string; role?: string; age?: number; gender?: 'male' | 'female' | 'non-binary' | 'any'; systemPrompt?: string; model?: string; baseModel?: AIEmployee['baseModel'] }) => {
+    // Check if this is a team member or synth
+    const isTeamMember = 'model' in profile && !('age' in profile);
     
-    // If user is logged in, also persist to Supabase
-    if (user) {
-      try {
-        // Convert AIEmployee to COAISynthData format
-        const synthData: COAISynthData = {
-          name: updatedSynth.name,
-          role: updatedSynth.role,
-          age: updatedSynth.age,
-          profileImage: updatedSynth.profileImage,
-          bio: updatedSynth.bio,
-          experience: updatedSynth.experience,
-          systemPrompt: updatedSynth.systemPrompt,
-          baseModel: updatedSynth.baseModel,
-          metadata: {}
-        };
-        
-        const success = await updateSynth(updatedSynth.id, synthData);
-        if (!success) {
-          console.error('❌ Failed to update synth in Supabase');
+    if (isTeamMember) {
+      // Handle team member update
+      const member = profile as TeamMember;
+      const updatedMember = { 
+        ...member, 
+        name: updates.name || member.name,
+        role: updates.role || member.role,
+        model: updates.model || member.model,
+        systemPrompt: updates.systemPrompt !== undefined ? updates.systemPrompt : member.systemPrompt
+      };
+      
+      // Update local state first for immediate UI update
+      setTeamMembers(prev => {
+        return prev.map(m => m.id === member.id ? updatedMember : m);
+      });
+      
+      setSelectedTeamMember(updatedMember);
+      
+      // Update the active team if it exists
+      if (activeThreadId) {
+        setTeams(prev => prev.map(team => 
+          team.id === activeThreadId 
+            ? { 
+                ...team, 
+                members: team.members.map(m => m.id === member.id ? updatedMember : m),
+                messages // Keep current messages
+              }
+            : team
+        ));
+      }
+
+      // Persist changes to Supabase if user is authenticated and in an active thread
+      if (user && activeThreadId) {
+        try {
+          // Check if this is a custom synth or built-in synth
+          const isCustomSynth = customSynths.some(synth => synth.id === member.id);
+          
+          // If it's a custom synth, update the synth data in the synths table
+          if (isCustomSynth) {
+            // Update the custom synth's base data if name, role, systemPrompt or model changed
+            const customSynth = customSynths.find(synth => synth.id === member.id);
+            if (customSynth) {
+              const updatedSynthData: Partial<COAISynthData> = {
+                ...customSynth,
+                name: updatedMember.name,
+                role: updatedMember.role,
+                systemPrompt: updatedMember.systemPrompt,
+                baseModel: updatedMember.model as any
+              };
+              
+              try {
+                await updateSynth(member.id, updatedSynthData);
+                console.log('✅ Custom synth data updated in Supabase:', member.id);
+              } catch (error) {
+                console.error('❌ Failed to update custom synth data in Supabase:', error);
+              }
+            }
+          }
+
+          // Check if synth exists in current thread and update its reference
+          const threadSynth = threadSynths.find(synth => synth.id === member.id);
+          
+          if (threadSynth) {
+            // Update the synth reference metadata in the thread
+            const updatedReference: Partial<COAITeamSynthReference> = {
+              metadata: {
+                model: updatedMember.model,
+                systemPrompt: updatedMember.systemPrompt,
+                name: updatedMember.name,
+                role: updatedMember.role,
+                profileImage: updatedMember.profileImage
+              }
+            };
+            
+            try {
+              await updateThreadSynthReference(activeThreadId, member.id, updatedReference);
+              console.log('✅ Thread synth reference updated in Supabase:', member.id);
+            } catch (error) {
+              console.error('❌ Failed to update thread synth reference in Supabase:', error);
+            }
+          }
+        } catch (error) {
+          console.error('❌ Failed to persist team member updates to Supabase:', error);
+          // Keep the local updates even if Supabase update fails
         }
-      } catch (error) {
-        console.error('❌ Failed to update synth in Supabase:', error);
-        // Keep the local update even if Supabase update fails
+      }
+    } else {
+      // Handle synth update
+      const synth = profile as AIEmployee;
+      const updatedSynth: AIEmployee = {
+        ...synth,
+        name: updates.name || synth.name,
+        role: updates.role || synth.role,
+        age: updates.age || synth.age,
+        gender: updates.gender || synth.gender,
+        systemPrompt: updates.systemPrompt !== undefined ? updates.systemPrompt : synth.systemPrompt,
+        baseModel: updates.baseModel || synth.baseModel
+      };
+      
+      // Update local state first for immediate UI update
+      setCustomSynths(prev => 
+        prev.map(s => s.id === synth.id ? updatedSynth : s)
+      );
+      
+      // Update selected employee if it's the one being edited
+      if (selectedEmployee?.id === synth.id) {
+        setSelectedEmployee(updatedSynth);
+      }
+      
+      // If user is logged in, also persist to Supabase
+      if (user) {
+        try {
+          // Convert AIEmployee to COAISynthData format
+          const synthData: COAISynthData = {
+            name: updatedSynth.name,
+            role: updatedSynth.role,
+            age: updatedSynth.age,
+            gender: updatedSynth.gender,
+            profileImage: updatedSynth.profileImage,
+            bio: updatedSynth.bio,
+            experience: updatedSynth.experience,
+            systemPrompt: updatedSynth.systemPrompt,
+            baseModel: updatedSynth.baseModel,
+            metadata: {}
+          };
+          
+          const success = await updateSynth(updatedSynth.id, synthData);
+          if (!success) {
+            console.error('❌ Failed to update synth in Supabase');
+          }
+        } catch (error) {
+          console.error('❌ Failed to update synth in Supabase:', error);
+          // Keep the local update even if Supabase update fails
+        }
       }
     }
-  }, [user, updateSynth]);
+  }, [user, updateSynth, selectedEmployee, activeThreadId, customSynths, threadSynths, updateThreadSynthReference]);
 
   // Handler for deleting custom synth
   const handleDeleteSynth = React.useCallback(async (synthId: string) => {
@@ -801,6 +912,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               name: synth.name,
               role: synth.role,
               age: synth.age,
+              gender: synth.gender,
               profileImage: synth.profileImage,
               bio: synth.bio,
               experience: synth.experience,
@@ -932,6 +1044,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
                   name: synth.name,
                   role: synth.role,
                   age: synth.age,
+                  gender: synth.gender,
                   profileImage: synthImageUrl,
                   bio: synth.bio,
                   experience: synth.experience,
@@ -1407,88 +1520,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     }
   }, [activeThreadId, teams.length, teamMembers, setTeams, setActiveThreadId, setMessages, setTeamMembers, user, customSynths, addSynthToThread, getThreadSynths]);
 
-  // Handler for updating team member
-  const handleUpdateTeamMember = React.useCallback(async (member: TeamMember, updates: { systemPrompt?: string; model?: string }) => {
-    const updatedMember = { 
-      ...member, 
-      model: updates.model || member.model,
-      systemPrompt: updates.systemPrompt !== undefined ? updates.systemPrompt : member.systemPrompt
-    };
-    
-    // Update local state first for immediate UI update
-    setTeamMembers(prev => {
-      return prev.map(m => m.id === member.id ? updatedMember : m);
-    });
-    
-    setSelectedTeamMember(updatedMember);
-    
-    // Update the active team if it exists
-    if (activeThreadId) {
-      setTeams(prev => prev.map(team => 
-        team.id === activeThreadId 
-          ? { 
-              ...team, 
-              members: team.members.map(m => m.id === member.id ? updatedMember : m),
-              messages // Keep current messages
-            }
-          : team
-      ));
-    }
 
-    // Persist changes to Supabase if user is authenticated and in an active thread
-    if (user && activeThreadId) {
-      try {
-        // Check if this is a custom synth or built-in synth
-        const isCustomSynth = customSynths.some(synth => synth.id === member.id);
-        
-        // If it's a custom synth, update the synth data in the synths table
-        if (isCustomSynth) {
-          // Update the custom synth's base data if systemPrompt or model changed
-          const customSynth = customSynths.find(synth => synth.id === member.id);
-          if (customSynth) {
-            const updatedSynthData: Partial<COAISynthData> = {
-              ...customSynth,
-              systemPrompt: updatedMember.systemPrompt,
-              baseModel: updatedMember.model as any
-            };
-            
-            try {
-              await updateSynth(member.id, updatedSynthData);
-              console.log('✅ Custom synth data updated in Supabase:', member.id);
-            } catch (error) {
-              console.error('❌ Failed to update custom synth data in Supabase:', error);
-            }
-          }
-        }
-
-        // Check if synth exists in current thread and update its reference
-        const threadSynth = threadSynths.find(synth => synth.id === member.id);
-        
-        if (threadSynth) {
-          // Update the synth reference metadata in the thread
-          const updatedReference: Partial<COAITeamSynthReference> = {
-            metadata: {
-              model: updatedMember.model,
-              systemPrompt: updatedMember.systemPrompt,
-              name: updatedMember.name,
-              role: updatedMember.role,
-              profileImage: updatedMember.profileImage
-            }
-          };
-          
-          try {
-            await updateTeamSynthReference(activeThreadId, member.id, updatedReference);
-            console.log('✅ Thread synth reference updated in Supabase:', member.id);
-          } catch (error) {
-            console.error('❌ Failed to update thread synth reference in Supabase:', error);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Failed to persist team member updates to Supabase:', error);
-        // Keep the local updates even if Supabase update fails
-      }
-    }
-  }, [activeThreadId, user, customSynths, threadSynths, updateSynth, updateTeamSynthReference]);
 
   // Legacy handleSendMessage removed - using directService instead
 
@@ -1877,7 +1909,11 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               onSelectCustomTeam={handleSelectCustomTeam}
               onAddNewTeam={handleAddNewTeam}
               onAddNewSynth={handleAddNewSynth}
-              onEditSynth={handleEditSynth}
+              onEditSynth={(synth: AIEmployee) => {
+                // This is called from the edit modal, so we don't have updates yet
+                // The actual editing happens in the ProfileSection
+                handleSelectEmployee(synth);
+              }}
               onDeleteSynth={handleDeleteSynth}
               customTeams={customTeams}
               onToggleCollapse={() => {
@@ -1920,12 +1956,12 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               />
             ) : (
               <ProfileSection
-                employee={selectedEmployee}
+                synth={selectedEmployee}
                 teamMember={selectedTeamMember}
                 onAddToTeam={handleAddToThread}
-                onUpdateTeamMember={handleUpdateTeamMember}
+                onUpdateProfile={handleUpdateProfile}
                 onDeleteSynth={handleDeleteSynth}
-                isCustomSynth={selectedEmployee ? customSynths.some(synth => synth.id === selectedEmployee.id) : false}
+                allSynths={customSynths}
                 isCollapsed={isProfileCollapsed}
                 onToggleCollapse={() => {
                   setIsProfileCollapsed(true);

@@ -19,8 +19,6 @@ const cleanJsonResponse = (content)=>{
   cleaned = cleaned.trim();
   return cleaned;
 };
-
-
 Deno.serve(async (req)=>{
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -28,7 +26,7 @@ Deno.serve(async (req)=>{
     });
   }
   try {
-    const { keywords, openaiApiKey, baseModel = 'gpt-4o', averageAge = 35 } = await req.json();
+    const { keywords, openaiApiKey, baseModel = 'gpt-4o', averageAge = 35, gender = 'any' } = await req.json();
     if (!openaiApiKey) {
       return new Response(JSON.stringify({
         error: 'OpenAI API key is required'
@@ -56,16 +54,25 @@ Deno.serve(async (req)=>{
       });
     }
     console.log(`🤖 [AI SYNTH CREATION] Starting generation for keywords: "${keywords}"`);
-    
     // Step 1: Generate character profile - realistic, no mental models bullshit
+    const genderInstruction = gender === 'any' ? 
+      'Choose an appropriate gender that fits the character description. Include the chosen gender in the response.' :
+      `The character MUST be ${gender}. This is a strict requirement - do not deviate from this gender specification.`;
+
     const characterPrompt = `Based on these keywords: "${keywords}"
 
 Create a character that LITERALLY IS what the keywords describe. Be realistic and authentic.
 
+CRITICAL GENDER REQUIREMENT: ${genderInstruction}
+- If gender is specified as male, create a male character with a male name
+- If gender is specified as female, create a female character with a female name  
+- If gender is specified as non-binary, create a non-binary character with an appropriate name
+- The character's entire identity should align with the specified gender
+
 CRITICAL NAME INSTRUCTIONS:
-- If the keywords contain a specific name (e.g., "buddy Joe", "friend Mike", "Sarah the expert"), USE THAT EXACT NAME
-- If the keywords describe a character type without a name (e.g., "angry customer", "fat kids"), choose an appropriate name that fits
-- The name should reflect the character described in the keywords
+- If the keywords contain a specific name (e.g., "buddy Joe", "friend Mike", "Sarah the expert"), USE THAT EXACT NAME but ensure it matches the gender requirement
+- If the keywords describe a character type without a name (e.g., "angry customer", "fat kids"), choose an appropriate name that fits the specified gender and character
+- The name MUST match the specified gender - no exceptions
 
 The keywords might describe:
 - A specific person with a name (e.g., "buddy Joe", "friend Sarah", "Mike the manager")
@@ -77,10 +84,11 @@ IMPORTANT: Return ONLY a valid JSON object with no additional text, explanations
 
 JSON structure required:
 {
-  "name": "Extract from keywords if specified, otherwise choose appropriate name",
+  "name": "Extract from keywords if specified (but ensure gender match), otherwise choose appropriate name for the specified gender",
   "age": number between ${Math.max(5, averageAge - 2)}-${Math.min(80, averageAge + 2)},
+  "gender": "${gender === 'any' ? 'Choose: male, female, or non-binary' : gender}",
   "role": "2-3 words maximum - LITERALLY what the keywords describe (e.g., 'Fat Kid', 'Angry Customer', 'Buddy Joe')",
-  "bio": "2-3 sentence bio that reflects what they ARE based on the keywords - be realistic",
+  "bio": "2-3 sentence bio that reflects what they ARE based on the keywords - be realistic and gender-appropriate",
   "personality_traits": ["trait1", "trait2", "trait3"],
   "background": "Brief background that explains why they are this way",
   "current_situation": "What their current life situation is like"
@@ -129,7 +137,7 @@ CHARACTER PROFILE:
 - Original Keywords: ${keywords}
 
 REQUIREMENTS:
-- Maximum 40-50 words - keep it short and punchy
+- Maximum 200 words - keep it short and punchy
 - Use CAPS for emphasis on key emotions and traits
 - Be BLUNT and DIRECT, no flowery language
 - Focus on their actual personality and situation
@@ -182,6 +190,7 @@ Return ONLY the raw, direct system prompt with communication instructions includ
     const generatedSynth = {
       name: characterData.name,
       age: characterData.age,
+      gender: characterData.gender || gender, // Use generated gender or fallback to input
       role: characterData.role,
       systemPrompt: systemPrompt,
       baseModel: baseModel,

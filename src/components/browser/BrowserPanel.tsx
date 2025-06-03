@@ -64,6 +64,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
     keywords: string;
     baseModel: string;
     averageAge: number;
+    gender?: string;
     startTime: number;
   }
   const [loadingSynths, setLoadingSynths] = useState<LoadingSynth[]>([]);
@@ -76,6 +77,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
     includeExistingSynths: boolean;
     teamType: string;
     averageAge: number;
+    genderDistribution: { male: number; female: number; nonBinary: number; };
     existingSynths?: any[];
     startTime: number;
   }
@@ -96,6 +98,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
   interface GeneratedTeamMember {
     name: string;
     age: number;
+    gender?: string;
     role: string;
     systemPrompt: string;
     baseModel: string;
@@ -122,10 +125,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
     setIsCreateSynthModalOpen(false);
   };
 
-  const handleEditSynth = (synth: AIEmployee) => {
-    setEditingSynth(synth);
-    setIsEditSynthModalOpen(true);
-  };
+
 
   const handleSaveEditedSynth = (updatedSynth: AIEmployee) => {
     onEditSynth(updatedSynth);
@@ -163,7 +163,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
     onQuickAddTeam(team.selectedSynths);
   };
 
-  const handleGenerationStart = (generationData: { keywords: string; baseModel: string; averageAge: number; }) => {
+  const handleGenerationStart = (generationData: { keywords: string; baseModel: string; averageAge: number; gender: string; }) => {
     console.log('🚀 Generation started with data:', generationData);
     
     // Generate a timestamp that will be used for both loading and permanent IDs
@@ -176,6 +176,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
       keywords: generationData.keywords,
       baseModel: generationData.baseModel,
       averageAge: generationData.averageAge,
+      gender: generationData.gender,
       startTime: timestamp,
     };
     
@@ -205,6 +206,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
         keywords: loadingSynth.keywords,
         baseModel: loadingSynth.baseModel,
         averageAge: loadingSynth.averageAge,
+        gender: loadingSynth.gender,
       });
 
       console.log('✅ AI Synth data received:', generatedSynthData);
@@ -219,6 +221,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
         id: permanentId,
         name: generatedSynthData.name,
         age: generatedSynthData.age,
+        gender: generatedSynthData.gender as AIEmployee['gender'],
         role: generatedSynthData.role,
         systemPrompt: generatedSynthData.systemPrompt,
         baseModel: generatedSynthData.baseModel as AIEmployee['baseModel'],
@@ -259,7 +262,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
     setLoadingSynths(prev => prev.filter(ls => ls.id !== loadingId));
   };
 
-  const handleTeamGenerationStart = (generationData: { keywords: string; teamSize: number; includeExistingSynths: boolean; teamType: string; averageAge: number; existingSynths?: any[]; }) => {
+  const handleTeamGenerationStart = (generationData: { keywords: string; teamSize: number; includeExistingSynths: boolean; teamType: string; averageAge: number; genderDistribution: { male: number; female: number; nonBinary: number; }; existingSynths?: any[]; }) => {
     console.log('🚀 Team generation started with data:', generationData);
     
     const loadingId = `loading-team-${Date.now()}`;
@@ -270,6 +273,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
       includeExistingSynths: generationData.includeExistingSynths,
       teamType: generationData.teamType,
       averageAge: generationData.averageAge,
+      genderDistribution: generationData.genderDistribution,
       existingSynths: generationData.existingSynths,
       startTime: Date.now(),
     };
@@ -303,6 +307,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
         baseModel: 'gpt-4o',
         teamType: loadingTeam.teamType as 'team' | 'group',
         averageAge: loadingTeam.averageAge,
+        genderDistribution: loadingTeam.genderDistribution,
       });
 
       console.log('✅ AI Team data received:', generatedTeamData);
@@ -336,6 +341,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
             id: member.existingId,
             name: member.name,
             age: member.age,
+            gender: member.gender as AIEmployee['gender'],
             role: member.role,
             systemPrompt: member.systemPrompt,
             baseModel: member.baseModel as AIEmployee['baseModel'],
@@ -350,6 +356,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
             id: `temp-synth-${Date.now()}-${index}`,
             name: member.name,
             age: member.age,
+            gender: member.gender as AIEmployee['gender'],
             role: member.role,
             systemPrompt: member.systemPrompt,
             baseModel: member.baseModel as AIEmployee['baseModel'],
@@ -570,7 +577,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
                           employee={synth}
                           onClick={onSelectEmployee}
                           onQuickAdd={onQuickAdd}
-                          onEdit={handleEditSynth}
+
                           onDelete={handleDeleteSynth}
                           onUpdateSynth={onEditSynth}
                         />

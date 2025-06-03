@@ -78,6 +78,7 @@ export interface SynthGenerationRequest {
   keywords: string;
   baseModel?: string;
   averageAge?: number;
+  gender?: string;
 }
 
 export interface TeamGenerationRequest {
@@ -94,11 +95,13 @@ export interface TeamGenerationRequest {
   baseModel?: string;
   teamType?: 'team' | 'group';
   averageAge?: number;
+  genderDistribution?: { male: number; female: number; nonBinary: number; };
 }
 
 export interface GeneratedSynth {
   name: string;
   age: number;
+  gender?: string;
   role: string;
   systemPrompt: string;
   baseModel: string;

@@ -1,5 +1,4 @@
 import OpenAI from 'npm:openai@4.28.0';
-
 // CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,35 +6,36 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
   'Access-Control-Max-Age': '86400'
 };
-
 // Helper function to clean markdown-formatted JSON responses
-const cleanJsonResponse = (content: string): string => {
+const cleanJsonResponse = (content)=>{
   if (!content) return '{}';
-  
   // Remove markdown code fences and any surrounding whitespace
   let cleaned = content.trim();
-  
   // Remove ```json and ``` markers
   cleaned = cleaned.replace(/^```json\s*/, '');
   cleaned = cleaned.replace(/^```\s*/, '');
   cleaned = cleaned.replace(/\s*```$/, '');
-  
   // Trim again after removing markers
   cleaned = cleaned.trim();
-  
   return cleaned;
 };
-
 // Helper function to generate a placeholder image (same as create-synth-ai)
-function generatePlaceholderImage(name: string): string {
-  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase();
+function generatePlaceholderImage(name) {
+  const initials = name.split(' ').map((n)=>n[0]).join('').toUpperCase();
   const colors = [
-    '#8B5CF6', '#EC4899', '#06B6D4', '#10B981', '#F59E0B',
-    '#EF4444', '#6366F1', '#84CC16', '#F97316', '#14B8A6'
+    '#8B5CF6',
+    '#EC4899',
+    '#06B6D4',
+    '#10B981',
+    '#F59E0B',
+    '#EF4444',
+    '#6366F1',
+    '#84CC16',
+    '#F97316',
+    '#14B8A6'
   ];
   const colorIndex = name.charCodeAt(0) % colors.length;
   const bgColor = colors[colorIndex];
-  
   // Generate a full screen color SVG placeholder
   const svg = `
     <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
@@ -45,20 +45,25 @@ function generatePlaceholderImage(name: string): string {
       </text>
     </svg>
   `;
-  
   return `data:image/svg+xml;base64,${btoa(svg)}`;
 }
-
 // Helper function to generate a team placeholder image
-function generateTeamPlaceholderImage(teamName: string): string {
-  const initials = teamName.split(' ').map(word => word[0]).join('').toUpperCase().slice(0, 3);
+function generateTeamPlaceholderImage(teamName) {
+  const initials = teamName.split(' ').map((word)=>word[0]).join('').toUpperCase().slice(0, 3);
   const colors = [
-    '#8B5CF6', '#EC4899', '#06B6D4', '#10B981', '#F59E0B',
-    '#EF4444', '#6366F1', '#84CC16', '#F97316', '#14B8A6'
+    '#8B5CF6',
+    '#EC4899',
+    '#06B6D4',
+    '#10B981',
+    '#F59E0B',
+    '#EF4444',
+    '#6366F1',
+    '#84CC16',
+    '#F97316',
+    '#14B8A6'
   ];
   const colorIndex = teamName.charCodeAt(0) % colors.length;
   const bgColor = colors[colorIndex];
-  
   // Generate a team placeholder SVG
   const svg = `
     <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
@@ -68,96 +73,31 @@ function generateTeamPlaceholderImage(teamName: string): string {
       </text>
     </svg>
   `;
-  
   return `data:image/svg+xml;base64,${btoa(svg)}`;
 }
-
-
-
-// Note: Image generation is now handled separately by the generate-synth-image function
-// This function focuses ONLY on team structure creation with placeholders
-
-interface TeamGenerationRequest {
-  keywords: string;
-  openaiApiKey: string;
-  teamSize?: number;
-  useExistingSynths?: boolean;
-  existingSynths?: ExistingSynth[];
-  baseModel?: string;
-  teamType?: string;
-  averageAge?: number;
-}
-
-interface ExistingSynth {
-  id: string;
-  name: string;
-  role: string;
-  bio?: string;
-  experience?: string[];
-}
-
-interface GeneratedTeamMember {
-  name: string;
-  age: number;
-  role: string;
-  systemPrompt: string;
-  baseModel: string;
-  profileImage: string;
-  bio?: string;
-  experience?: string[];
-  mentalModels?: string[];
-  coreParadigm?: string;
-  systemsPerspective?: string;
-  isExisting?: boolean;
-  existingId?: string;
-  isLoadingImage?: boolean;
-}
-
-interface GeneratedTeam {
-  name: string;
-  description: string;
-  members: GeneratedTeamMember[];
-  teamImage?: string;
-  collaborationStyle: string;
-  isLoadingTeamImage?: boolean;
-}
-
-Deno.serve(async (req) => {
+Deno.serve(async (req)=>{
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', {
+      headers: corsHeaders
+    });
   }
-
   try {
     // Extract request data
-    const { 
-      keywords, 
-      teamSize = 3, 
-      useExistingSynths = false, 
-      existingSynths = [], 
-      baseModel = 'gpt-4o',
-      teamType = 'team', // Default to 'team' if not specified
-      averageAge = 35, // Default average age
-      openaiApiKey
-    } = await req.json();
-
-    console.log(`🎯 Creating AI ${teamType}: "${keywords}" with ${teamSize} members (avg age: ${averageAge})`);
-
+    const { keywords, teamSize = 3, useExistingSynths = false, existingSynths = [], baseModel = 'gpt-4o', teamType = 'team', averageAge = 35, genderDistribution = { male: 50, female: 50, nonBinary: 0 }, openaiApiKey } = await req.json();
+          console.log(`🎯 Creating AI ${teamType}: "${keywords}" with ${teamSize} members (avg age: ${averageAge}, gender dist: ${genderDistribution.male}%M/${genderDistribution.female}%F/${genderDistribution.nonBinary}%NB)`);
     if (!openaiApiKey) {
       throw new Error('OpenAI API key is required');
     }
-
     const openai = new OpenAI({
-      apiKey: openaiApiKey,
+      apiKey: openaiApiKey
     });
-
     // Step 1: Generate team concept and structure with different prompts for team vs group
-    let teamConceptPrompt: string;
-    
+    let teamConceptPrompt;
     if (teamType === 'team') {
       // TEAM prompt - collaborative, functional naming
       teamConceptPrompt = `Based on these keywords: "${keywords}"
 
-Create a COLLABORATIVE TEAM concept with EXACTLY ${teamSize} team members. This should be a group that works together toward common goals.
+Create a TEAM concept with EXACTLY ${teamSize} team members. This should be a group that works together toward common goals.
 
 IMPORTANT: Return ONLY a valid JSON object with no additional text, explanations, or markdown formatting.
 
@@ -200,7 +140,7 @@ IMPORTANT: Return ONLY a valid JSON object with no additional text, explanations
 
 JSON structure required:
 {
-  "team_name": "Literal descriptive group name (e.g., 'Fat Kids Group', 'Angry Customers', 'Tech Investors')",
+  "team_name": "Literal descriptive group name (e.g., 'Fat Kids', 'Angry Customers', 'Tech Investors')",
   "team_description": "2-3 sentence description of what type of people this group LITERALLY represents",
   "collaboration_style": "How these individuals typically behave or interact (not as a team)",
   "required_roles": [
@@ -227,36 +167,82 @@ Examples:
 
 Return only the JSON object, nothing else.`;
     }
-
     const teamConceptResponse = await openai.chat.completions.create({
       model: 'gpt-4o',
-      messages: [{ role: 'user', content: teamConceptPrompt }],
-      temperature: 0.8,
+      messages: [
+        {
+          role: 'user',
+          content: teamConceptPrompt
+        }
+      ],
+      temperature: 0.8
     });
-
     const rawTeamConcept = teamConceptResponse.choices[0].message.content || '{}';
     console.log(`🔍 Raw team concept response: ${rawTeamConcept.substring(0, 200)}...`);
-    
     const cleanedTeamConcept = cleanJsonResponse(rawTeamConcept);
     console.log(`🧹 Cleaned team concept response: ${cleanedTeamConcept.substring(0, 200)}...`);
-    
     const teamConcept = JSON.parse(cleanedTeamConcept);
     console.log(`✅ Generated team concept: ${teamConcept.team_name}`);
-
-    // Step 2: Generate team members using the same process as create-synth-ai (fast creation with placeholder images)
-    const teamMembers: GeneratedTeamMember[] = [];
-
-    for (let i = 0; i < teamConcept.required_roles.length; i++) {
+    
+    // CRITICAL: Validate that AI created the correct number of roles
+    if (!teamConcept.required_roles || teamConcept.required_roles.length !== teamSize) {
+      console.warn(`⚠️ AI created ${teamConcept.required_roles?.length || 0} roles but we requested ${teamSize}. Adjusting...`);
+      
+      // If AI created fewer roles, duplicate some roles with variations
+      if (!teamConcept.required_roles) {
+        teamConcept.required_roles = [];
+      }
+      
+      while (teamConcept.required_roles.length < teamSize) {
+        const baseRole = teamConcept.required_roles[teamConcept.required_roles.length % Math.max(1, teamConcept.required_roles.length)] || {
+          role: "Team Member",
+          importance: "medium",
+          responsibilities: "Contributes to team goals",
+          existing_match: null
+        };
+        
+        teamConcept.required_roles.push({
+          ...baseRole,
+          role: `${baseRole.role} ${teamConcept.required_roles.length + 1}`
+        });
+      }
+      
+      // If AI created too many roles, trim to requested size
+      if (teamConcept.required_roles.length > teamSize) {
+        teamConcept.required_roles = teamConcept.required_roles.slice(0, teamSize);
+      }
+    }
+    
+    console.log(`🔢 Final role count: ${teamConcept.required_roles.length} (requested: ${teamSize})`);
+    
+    // Step 2: Pre-calculate gender assignments to match distribution
+    const genderAssignments = [];
+    const maleCount = Math.round((genderDistribution.male / 100) * teamSize);
+    const femaleCount = Math.round((genderDistribution.female / 100) * teamSize);
+    const nonBinaryCount = teamSize - maleCount - femaleCount;
+    
+    console.log(`👥 Gender distribution: ${maleCount}M, ${femaleCount}F, ${nonBinaryCount}NB (total: ${teamSize})`);
+    
+    // Create gender assignment array
+    for (let i = 0; i < maleCount; i++) genderAssignments.push('male');
+    for (let i = 0; i < femaleCount; i++) genderAssignments.push('female');
+    for (let i = 0; i < nonBinaryCount; i++) genderAssignments.push('non-binary');
+    
+    // Shuffle the assignments to randomize order
+    for (let i = genderAssignments.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [genderAssignments[i], genderAssignments[j]] = [genderAssignments[j], genderAssignments[i]];
+    }
+    
+    // Step 3: Generate team members using the same process as create-synth-ai (fast creation with placeholder images)
+    const teamMembers = [];
+    for(let i = 0; i < teamConcept.required_roles.length; i++){
       const roleSpec = teamConcept.required_roles[i];
       // Check if we should use an existing synth
       if (useExistingSynths && roleSpec.existing_match) {
-        const existingSynth = existingSynths.find(s => 
-          s.name.toLowerCase() === roleSpec.existing_match.toLowerCase()
-        );
-        
+        const existingSynth = existingSynths.find((s)=>s.name.toLowerCase() === roleSpec.existing_match.toLowerCase());
         if (existingSynth) {
           console.log(`♻️ Using existing synth: ${existingSynth.name} for ${roleSpec.role}`);
-          
           // Generate system prompt for existing synth in team context
           const teamSystemPromptRequest = `Create a VERY DIRECT, RAW system prompt for ${existingSynth.name} (${existingSynth.role}) in this ${teamType} context:
 
@@ -269,7 +255,7 @@ Existing Bio: ${existingSynth.bio || 'Not provided'}
 Existing Experience: ${existingSynth.experience?.join(', ') || 'Not provided'}
 
 REQUIREMENTS:
-- Maximum 60-80 words (slightly longer to include mental models)
+- Maximum 200 words (slightly longer to include mental models)
 - Use CAPS for emphasis on key traits/emotions
 - Be BLUNT and DIRECT, no flowery language
 - Cut out poetic descriptions
@@ -277,38 +263,39 @@ REQUIREMENTS:
 - Written in second person ("You are...")
 - Make it sound urgent/intense
 
-STYLE: "You are [Name], A VERY [TRAIT] [ROLE]. YOU ARE [EMOTION], [EMOTION], you [behavior] and you [what drives them mad/happy]."
-
-Example style: "You are Sarah, A VERY ANGRY DOCTOR. YOU ARE FURIOUS, EXHAUSTED, you work 16-hour shifts and you're mad about hospital understaffing."
-
 Return ONLY the raw, direct system prompt.`;
-
           const teamSystemPromptResponse = await openai.chat.completions.create({
             model: 'gpt-4o',
-            messages: [{ role: 'user', content: teamSystemPromptRequest }],
-            temperature: 0.7,
+            messages: [
+              {
+                role: 'user',
+                content: teamSystemPromptRequest
+              }
+            ],
+            temperature: 0.7
           });
-
           teamMembers.push({
             name: existingSynth.name,
-            age: 30, // Default for existing
+            age: 30,
             role: existingSynth.role,
             systemPrompt: teamSystemPromptResponse.choices[0].message.content || '',
             baseModel: baseModel,
-            profileImage: '', // Will use existing
+            profileImage: '',
             bio: existingSynth.bio,
             experience: existingSynth.experience,
             isExisting: true,
             existingId: existingSynth.id,
-            isLoadingImage: true, // Will be generated separately
+            isLoadingImage: true
           });
           continue;
         }
       }
-
       // Generate new team member using the SAME PROCESS as create-synth-ai
       console.log(`🆕 Generating new member for role: ${roleSpec.role} using optimized process`);
       
+      // Use pre-calculated gender assignment to ensure exact distribution
+      const memberGender = genderAssignments[i] || 'male'; // Fallback to male if somehow missing
+      console.log(`👤 Assigning gender: ${memberGender} to member ${i + 1}/${teamSize}`);
       // Step 2a: Generate character profile - realistic, no mental models bullshit
       const characterPrompt = `Based on these keywords and role: "${keywords}" - ${roleSpec.role}
 
@@ -328,8 +315,9 @@ IMPORTANT: Return ONLY a valid JSON object with no additional text, explanations
 
 JSON structure required:
 {
-  "name": "Choose appropriate name for this character type",
+  "name": "Choose appropriate ${memberGender} name for this character type",
   "age": number between ${Math.max(5, averageAge - 2)}-${Math.min(80, averageAge + 2)},
+  "gender": "${memberGender}",
   "role": "${roleSpec.role}",
   "bio": "2-3 sentence bio that reflects what they ARE based on the keywords - be realistic",
   "personality_traits": ["trait1", "trait2", "trait3"],
@@ -342,24 +330,25 @@ CRITICAL:
 - BE REALISTIC - no overly positive or intellectual nonsense
 - Focus on creating a character that IS what the role describes
 - Make them authentic to real life
+- Ensure gender is appropriate for the character.
 
 Return only the JSON object, nothing else.`;
-
       const characterResponse = await openai.chat.completions.create({
         model: 'gpt-4o',
-        messages: [{ role: 'user', content: characterPrompt }],
-        temperature: 0.8,
+        messages: [
+          {
+            role: 'user',
+            content: characterPrompt
+          }
+        ],
+        temperature: 0.8
       });
-
       const rawCharacterData = characterResponse.choices[0].message.content || '{}';
       console.log(`🔍 Raw character data response: ${rawCharacterData.substring(0, 200)}...`);
-      
       const cleanedCharacterData = cleanJsonResponse(rawCharacterData);
       console.log(`🧹 Cleaned character data response: ${cleanedCharacterData.substring(0, 200)}...`);
-      
       const characterData = JSON.parse(cleanedCharacterData);
       console.log(`✅ Generated character: ${characterData.name} - ${characterData.role}`);
-
       // Step 2b: Generate realistic system prompt - no mental models bullshit
       const systemPromptRequest = `Create a VERY DIRECT, RAW system prompt for this character based on what they actually ARE:
 
@@ -371,10 +360,10 @@ CHARACTER PROFILE:
 - Background: ${characterData.background}
 - Current Situation: ${characterData.current_situation}
 - Original Keywords: ${keywords}
-- Team Position: Member ${i + 1} of ${teamConcept.required_roles.length} (MUST be unique from other team members)
+- Gender: appropriate for the ${characterData.name}
 
 REQUIREMENTS:
-- Maximum 40-50 words - keep it short and punchy
+- Maximum 200 words - keep it short and punchy
 - Use CAPS for emphasis on key emotions and traits
 - Be BLUNT and DIRECT, no flowery language
 - Focus on their actual personality and situation
@@ -396,8 +385,6 @@ CRITICAL COMMUNICATION RULES:
 - Teens MUST use slang, attitude, and dramatic language
 - NO polite adult phrases like "How are you doing today?" for kids - they don't talk like that!
 
-STYLE: "You are [Name], A VERY [TRAIT] [ROLE]. YOU ARE [EMOTION] about [what bothers them], you [how they behave] and you [what they want/need]."
-
 Examples:
 - Fat Kid (16): "You are Ethan, A VERY INSECURE FAT TEEN. YOU HATE how you look, you're like 'whatever' when people stare and you just wanna be left alone."
 - Angry Customer (45): "You are Karen, A VERY FRUSTRATED CUSTOMER. YOU ARE PISSED about bad service, you demand to speak to managers and you want your money back."
@@ -411,23 +398,25 @@ CRITICAL: Add explicit communication instructions to the system prompt:
 - For adults: Keep professional but authentic to their personality
 
 Return ONLY the raw, direct system prompt with communication instructions included.`;
-
       const systemPromptResponse = await openai.chat.completions.create({
         model: 'gpt-4o',
-        messages: [{ role: 'user', content: systemPromptRequest }],
-        temperature: 0.7,
+        messages: [
+          {
+            role: 'user',
+            content: systemPromptRequest
+          }
+        ],
+        temperature: 0.7
       });
-
       const systemPrompt = systemPromptResponse.choices[0].message.content || '';
       console.log(`✅ Generated system prompt for ${characterData.name} (${systemPrompt.length} chars)`);
-
       // Step 2c: Generate placeholder image (same as create-synth-ai)
       const placeholderImage = generatePlaceholderImage(characterData.name);
-
       // Step 2d: Create team member with isLoadingImage flag
       teamMembers.push({
         name: characterData.name,
         age: characterData.age,
+        gender: characterData.gender,
         role: characterData.role,
         systemPrompt: systemPrompt,
         baseModel: baseModel,
@@ -438,50 +427,57 @@ Return ONLY the raw, direct system prompt with communication instructions includ
         coreParadigm: characterData.core_paradigm,
         systemsPerspective: characterData.systems_perspective,
         isExisting: false,
-        isLoadingImage: true, // Flag to indicate image is being generated in background
+        isLoadingImage: true
       });
-
       console.log(`✅ Generated member: ${characterData.name} - ${characterData.role} (image will be generated in background)`);
-
       // Image generation will be handled separately by the frontend calling generate-synth-image
       console.log(`✅ Generated member: ${characterData.name} - ${characterData.role} (placeholder image)`);
     }
-
     // Step 3: Generate team placeholder image (fast response)
     console.log(`🎨 Generating ${teamType} placeholder image...`);
     const teamPlaceholderImage = generateTeamPlaceholderImage(teamConcept.team_name);
-
     // Step 4: Team image generation will be handled separately by the frontend
     console.log(`🎨 Generated ${teamType} placeholder image for: ${teamConcept.team_name}`);
-
     // Step 5: Compile final team data (fast response)
-    const generatedTeam: GeneratedTeam = {
+    const generatedTeam = {
       name: teamConcept.team_name,
       description: teamConcept.team_description,
       members: teamMembers,
       teamImage: teamPlaceholderImage,
       collaborationStyle: teamConcept.collaboration_style,
-      isLoadingTeamImage: true, // Images will be generated separately
+      isLoadingTeamImage: true
     };
-
+    // Log final team composition for debugging
+    const finalGenderCount = {
+      male: teamMembers.filter(m => m.gender === 'male').length,
+      female: teamMembers.filter(m => m.gender === 'female').length,
+      'non-binary': teamMembers.filter(m => m.gender === 'non-binary').length
+    };
+    
     console.log(`🎉 Successfully generated team: ${generatedTeam.name} with ${teamMembers.length} members (images will be generated separately)`);
+    console.log(`📊 Final gender distribution: ${finalGenderCount.male}M, ${finalGenderCount.female}F, ${finalGenderCount['non-binary']}NB`);
+    console.log(`🎯 Requested: ${teamSize} members with ${genderDistribution.male}%M/${genderDistribution.female}%F/${genderDistribution.nonBinary}%NB`);
 
     return new Response(JSON.stringify({
       success: true,
       team: generatedTeam
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
     });
-
   } catch (error) {
     console.error('❌ Error in create-team-ai:', error);
-    
     return new Response(JSON.stringify({
       error: 'Failed to generate team',
       details: error.message
     }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
     });
   }
-}); 
+});
