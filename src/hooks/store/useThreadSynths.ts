@@ -18,25 +18,17 @@ export function useThreadSynths() {
   
   // Get synths for the active thread from the threadSynths relationship
   const threadSynths = useMemo(() => {
-    console.log('🔍 DEBUG [useThreadSynths]: activeThreadId:', activeThreadId);
-    console.log('🔍 DEBUG [useThreadSynths]: threadSynthsRelationships:', threadSynthsRelationships);
-    console.log('🔍 DEBUG [useThreadSynths]: synths entities:', synths ? Object.keys(synths).length : 'null');
-    
     if (!activeThreadId || !threadSynthsRelationships || !threadSynthsRelationships[activeThreadId] || !synths) {
-      console.log('🔍 DEBUG [useThreadSynths]: Early return - missing data');
       return [];
     }
     
     const synthIds = threadSynthsRelationships[activeThreadId];
-    console.log('🔍 DEBUG [useThreadSynths]: synthIds for thread:', synthIds);
     
     const foundSynths = synthIds.map((id) => {
       const synth = synths[id];
-      console.log('🔍 DEBUG [useThreadSynths]: Looking for synth:', id, 'found:', !!synth);
       return synth;
     }).filter(Boolean);
     
-    console.log('🔍 DEBUG [useThreadSynths]: Final foundSynths:', foundSynths.length);
     return foundSynths;
   }, [activeThreadId, threadSynthsRelationships, synths]);
   

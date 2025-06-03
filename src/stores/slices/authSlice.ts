@@ -28,6 +28,11 @@ export interface AuthSlice {
   removeTempApiKey: (provider: string) => void;
   clearTempApiKeys: () => void;
   
+  // API Key persistence methods
+  saveApiKey: (provider: string, key: string) => Promise<{ error: Error | null }>;
+  removeApiKey: (provider: string) => Promise<{ error: Error | null }>;
+  getApiKey: (provider: string) => string | undefined;
+  
   // Auth operations
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signInWithGoogle: () => Promise<{ error: AuthError | null }>;
@@ -108,6 +113,88 @@ export const createAuthSlice: StateCreator<
     set(() => ({
       tempApiKeys: {},
     }), false, 'auth/clearTempApiKeys');
+  },
+  
+  // API Key persistence methods
+  saveApiKey: async (provider, key) => {
+    try {
+      const profile = get().profile;
+      
+      if (!profile) {
+        return { error: new Error('No profile found') };
+      }
+      
+      const updatedProfileData = {
+        ...profile.profile_data,
+        apiKeys: {
+          ...profile.profile_data.apiKeys,
+          [provider]: key,
+        },
+      };
+      
+      const { data, error } = await supabase
+        .from('coai-profiles')
+        .update({
+          profile_data: updatedProfileData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', profile.id)
+        .select()
+        .single();
+      
+      if (error) {
+        return { error };
+      }
+      
+      get().setProfile(data);
+      
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  },
+  
+  removeApiKey: async (provider) => {
+    try {
+      const profile = get().profile;
+      
+      if (!profile) {
+        return { error: new Error('No profile found') };
+      }
+      
+      const updatedApiKeys = { ...profile.profile_data.apiKeys };
+      delete updatedApiKeys[provider];
+      
+      const updatedProfileData = {
+        ...profile.profile_data,
+        apiKeys: updatedApiKeys,
+      };
+      
+      const { data, error } = await supabase
+        .from('coai-profiles')
+        .update({
+          profile_data: updatedProfileData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', profile.id)
+        .select()
+        .single();
+      
+      if (error) {
+        return { error };
+      }
+      
+      get().setProfile(data);
+      
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  },
+  
+  getApiKey: (provider) => {
+    const profile = get().profile;
+    return profile?.profile_data?.apiKeys?.[provider];
   },
   
   // Auth operations
@@ -567,6 +654,13 @@ export const createAuthSlice: StateCreator<
       
       if (data) {
         get().setProfile(data);
+        
+        // Fetch user documents after profile is loaded
+        try {
+          await get().fetchDocuments();
+        } catch (docError) {
+          console.error('Error fetching documents:', docError);
+        }
       } else {
         // Create profile if it doesn't exist
         await get()._createProfile(userId);

@@ -453,18 +453,10 @@ export const createThreadsSlice: StateCreator<
       // Use the directService to fetch thread synths
       const threadSynths = await directService.getThreadSynths(threadId);
       
-      console.log('🔍 DEBUG: Raw threadSynths from database:', threadSynths);
-      console.log('🔍 DEBUG: First threadSynth structure:', threadSynths[0]);
-      
       // Create a list of synth IDs for this thread - extract from synth_reference.synthId
       const synthIds = threadSynths.map((ts: any) => {
-        console.log('🔍 DEBUG: Processing threadSynth:', ts);
-        console.log('🔍 DEBUG: ts.synth_reference:', ts.synth_reference);
-        console.log('🔍 DEBUG: ts.synth_reference?.synthId:', ts.synth_reference?.synthId);
         return ts.synth_reference?.synthId;
       }).filter(Boolean) as string[];
-      
-      console.log('🔍 DEBUG: Extracted synthIds:', synthIds);
       
       // Update the relationship in the store
       set((state) => ({
@@ -513,8 +505,6 @@ export const createThreadsSlice: StateCreator<
           }), false, 'threads/getThreadSynths/addSynthEntity');
         }
       }
-      
-      console.log('✅ Thread synths loaded successfully:', synthIds.length, 'synths');
       
       return threadSynths;
     } catch (error) {

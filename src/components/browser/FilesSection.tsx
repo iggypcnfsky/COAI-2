@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import CreateDocumentModal from './CreateDocumentModal';
 import { useDocuments } from '@/hooks/store/useDocuments';
-import type { Document } from '@/types/store';
+import type { COAIDocument } from '@/types';
 
 interface FilesSectionProps {
   // Future props for file management
@@ -13,7 +13,7 @@ interface FilesSectionProps {
 const FilesSection: React.FC<FilesSectionProps> = () => {
   const [isCreateDocumentModalOpen, setIsCreateDocumentModalOpen] = useState(false);
   const [draggedDocId, setDraggedDocId] = useState<string | null>(null);
-  const [editingDocument, setEditingDocument] = useState<Document | null>(null);
+  const [editingDocument, setEditingDocument] = useState<COAIDocument | null>(null);
   
   // Use the documents hook from Zustand
   const { 
@@ -28,7 +28,7 @@ const FilesSection: React.FC<FilesSectionProps> = () => {
     setIsCreateDocumentModalOpen(true);
   };
 
-  const handleEditDocument = (document: Document) => {
+  const handleEditDocument = (document: COAIDocument) => {
     setEditingDocument(document);
     setIsCreateDocumentModalOpen(true);
   };
@@ -61,7 +61,7 @@ const FilesSection: React.FC<FilesSectionProps> = () => {
     setEditingDocument(null);
   };
 
-  const handleDragStart = (e: React.DragEvent, doc: Document) => {
+  const handleDragStart = (e: React.DragEvent, doc: COAIDocument) => {
     e.dataTransfer.setData('application/json', JSON.stringify({
       type: 'document',
       document: doc
@@ -91,7 +91,7 @@ const FilesSection: React.FC<FilesSectionProps> = () => {
         </svg>
       </div>
       <div style="flex: 1; min-width: 0;">
-        <div style="font-weight: 600; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${doc.title}</div>
+        <div style="font-weight: 600; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${doc.document_data.title}</div>
         <div style="font-size: 11px; opacity: 0.8; font-weight: 400;">Document</div>
       </div>
     `;
@@ -152,15 +152,15 @@ const FilesSection: React.FC<FilesSectionProps> = () => {
                     <FileText className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <h4 className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
-                        {doc.title}
+                        {doc.document_data.title}
                       </h4>
                       <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-1">
-                        {doc.content}
+                        {doc.document_data.content}
                       </p>
                       <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
-                        Created {new Date(doc.createdAt).toLocaleDateString()}
-                        {new Date(doc.updatedAt).getTime() !== new Date(doc.createdAt).getTime() && (
-                          <span> • Updated {new Date(doc.updatedAt).toLocaleDateString()}</span>
+                        Created {new Date(doc.created_at).toLocaleDateString()}
+                        {new Date(doc.updated_at).getTime() !== new Date(doc.created_at).getTime() && (
+                          <span> • Updated {new Date(doc.updated_at).toLocaleDateString()}</span>
                         )}
                       </p>
                     </div>

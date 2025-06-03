@@ -5,13 +5,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { FileText, Save, Edit } from 'lucide-react';
-import type { Document } from '@/types/store';
+import type { COAIDocument } from '@/types';
 
 interface CreateDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (documentData: { title: string; content: string; id?: string }) => void;
-  editDocument?: Document | null;
+  editDocument?: COAIDocument | null;
 }
 
 const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
@@ -30,8 +30,8 @@ const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   useEffect(() => {
     if (editDocument) {
       setFormData({
-        title: editDocument.title,
-        content: editDocument.content,
+        title: editDocument.document_data.title,
+        content: editDocument.document_data.content,
       });
     } else {
       setFormData({

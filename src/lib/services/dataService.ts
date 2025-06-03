@@ -649,6 +649,9 @@ export class DataService {
         query = query.eq('team_data->isPublic', true);
       }
       
+      // Order by creation time (newest first)
+      query = query.order('created_at', { ascending: false });
+      
       const { data, error } = await query;
       
       if (error) throw error;

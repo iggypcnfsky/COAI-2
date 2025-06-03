@@ -88,6 +88,12 @@ export interface COAIProfileData {
     notifications?: boolean;
     defaultModel?: string;
   };
+  apiKeys?: {
+    openai?: string;
+    anthropic?: string;
+    googleai?: string;
+    [provider: string]: string | undefined;
+  };
   metadata?: Record<string, any>;
 }
 
@@ -207,6 +213,24 @@ export interface COAIMessage {
   thread_id: string;
   message_data: COAIMessageData;
   created_at: string;
+}
+
+// Document data structure for coai-documents table
+export interface COAIDocumentData {
+  title: string;
+  content: string;
+  type?: 'text' | 'markdown' | 'code' | 'note';
+  tags?: string[];
+  metadata?: Record<string, any>;
+}
+
+// Database row type for documents
+export interface COAIDocument {
+  id: string;
+  user_id: string;
+  document_data: COAIDocumentData;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CustomTeam {

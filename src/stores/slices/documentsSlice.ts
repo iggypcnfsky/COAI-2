@@ -1,212 +1,332 @@
 import { StateCreator } from 'zustand';
-import { RootState, Document } from '../../types/store';
-import { generateId } from '../../lib/utils/index';
+import { RootState } from '../../types/store';
+import { supabase } from '../../lib/supabase';
+import { COAIDocument, COAIDocumentData } from '../../types';
+import { upsertEntity, removeEntity } from '../../lib/utils/normalization';
+import { LoadingStateKey } from '../../types/store';
 
-// Define the Document slice interface contributions to RootState
-export interface DocumentsSliceState {
-  documents: Record<string, Document>;
-  activeDocumentId_doc: string | null;
-  loadingStates_doc: {
-    fetchDocuments: boolean;
-    saveDocument: boolean;
-  };
+// Define the documents slice interface
+export interface DocumentsSlice {
+  // CRUD operations
+  fetchDocuments: () => Promise<{ error: Error | null }>;
+  createDocument: (documentData: COAIDocumentData) => Promise<{ data: COAIDocument | null; error: Error | null }>;
+  updateDocumentById: (documentId: string, updates: Partial<COAIDocumentData>) => Promise<{ error: Error | null }>;
+  deleteDocument: (documentId: string) => Promise<{ error: Error | null }>;
 }
 
-export interface DocumentsSliceActions {
-  fetchDocuments: () => Promise<void>;
-  createDocument: (data: { title: string; content: string }) => Promise<Document>;
-  updateDocument: (id: string, data: Partial<Omit<Document, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<Document>;
-  deleteDocument: (id: string) => Promise<void>;
-  setActiveDocument_doc: (id: string | null) => void;
-}
-
-export type FullDocumentsSlice = DocumentsSliceState & DocumentsSliceActions;
-
-// Create the slice
+// Create the documents slice
 export const createDocumentsSlice: StateCreator<
   RootState,
+  [["zustand/devtools", never], ["zustand/persist", unknown]],
   [],
-  [],
-  FullDocumentsSlice
+  DocumentsSlice
 > = (set, get) => ({
-  // Initial state parts managed by this slice, will be merged into RootState
-  documents: {},
-  activeDocumentId_doc: null,
-  loadingStates_doc: {
-    fetchDocuments: false,
-    saveDocument: false,
-  },
   
-  // Actions
+  // CRUD operations
   fetchDocuments: async () => {
-    set((state: RootState) => ({
-      ...state, // Spread current state to preserve other parts
+    set((state) => ({
+      ...state,
       ui: {
         ...state.ui,
-        loadingStates_doc: { ...state.ui.loadingStates_doc, fetchDocuments: true },
+        loadingStates: {
+          ...state.ui.loadingStates,
+          [LoadingStateKey.FETCH_DOCUMENTS]: true,
+        },
+        errors: {
+          ...state.ui.errors,
+          [LoadingStateKey.FETCH_DOCUMENTS]: null,
+        },
       },
-    }));
-    
+    }), false, 'documents/fetchDocuments/start');
+
     try {
-      const storedDocuments = localStorage.getItem('coai-documents');
-      const fetchedDocs = storedDocuments ? JSON.parse(storedDocuments) : {};
-      Object.values(fetchedDocs).forEach((doc: any) => {
-        doc.createdAt = new Date(doc.createdAt);
-        doc.updatedAt = new Date(doc.updatedAt);
-      });
+      const user = get().user;
+      if (!user) {
+        return { error: new Error('User not authenticated') };
+      }
       
-      set((state: RootState) => ({
+      const { data, error } = await supabase
+        .from('coai-documents')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false });
+      
+      if (error) {
+        set((state) => ({
+          ...state,
+          ui: {
+            ...state.ui,
+            loadingStates: {
+              ...state.ui.loadingStates,
+              [LoadingStateKey.FETCH_DOCUMENTS]: false,
+            },
+            errors: {
+              ...state.ui.errors,
+              [LoadingStateKey.FETCH_DOCUMENTS]: error,
+            },
+          },
+        }), false, 'documents/fetchDocuments/error');
+        return { error };
+      }
+      
+      // Update entities with documents
+      const documentsMap = (data || []).reduce((acc, doc) => {
+        acc[doc.id] = doc;
+        return acc;
+      }, {} as Record<string, COAIDocument>);
+      
+      set((state) => ({
         ...state,
         entities: {
           ...state.entities,
-          documents: fetchedDocs, // Update documents within entities
+          documents: documentsMap,
         },
         ui: {
           ...state.ui,
-          loadingStates_doc: { ...state.ui.loadingStates_doc, fetchDocuments: false },
-        },
-      }));
-    } catch (error) {
-              console.error('Error fetching documents:', error);
-        set((state: RootState) => ({
-          ...state,
-          ui: {
-            ...state.ui,
-            loadingStates_doc: { ...state.ui.loadingStates_doc, fetchDocuments: false },
+          loadingStates: {
+            ...state.ui.loadingStates,
+            [LoadingStateKey.FETCH_DOCUMENTS]: false,
           },
-        }));
+        },
+      }), false, 'documents/fetchDocuments/success');
+      
+      return { error: null };
+    } catch (error) {
+      set((state) => ({
+        ...state,
+        ui: {
+          ...state.ui,
+          loadingStates: {
+            ...state.ui.loadingStates,
+            [LoadingStateKey.FETCH_DOCUMENTS]: false,
+          },
+          errors: {
+            ...state.ui.errors,
+            [LoadingStateKey.FETCH_DOCUMENTS]: error as Error,
+          },
+        },
+      }), false, 'documents/fetchDocuments/error');
+      return { error: error as Error };
     }
   },
   
-  createDocument: async (data) => {
-    set((state: RootState) => ({
+  createDocument: async (documentData) => {
+    set((state) => ({
       ...state,
       ui: {
         ...state.ui,
-        loadingStates_doc: { ...state.ui.loadingStates_doc, saveDocument: true },
+        loadingStates: {
+          ...state.ui.loadingStates,
+          [LoadingStateKey.CREATE_DOCUMENT]: true,
+        },
+        errors: {
+          ...state.ui.errors,
+          [LoadingStateKey.CREATE_DOCUMENT]: null,
+        },
       },
-    }));
-    
+    }), false, 'documents/createDocument/start');
+
     try {
-      const now = new Date();
-      const newDocument: Document = {
-        id: generateId(),
-        title: data.title,
-        content: data.content,
-        createdAt: now,
-        updatedAt: now,
+      const user = get().user;
+      if (!user) {
+        return { data: null, error: new Error('User not authenticated') };
+      }
+      
+      const { data, error } = await supabase
+        .from('coai-documents')
+        .insert({
+          user_id: user.id,
+          document_data: documentData,
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        set((state) => ({
+          ...state,
+          ui: {
+            ...state.ui,
+            loadingStates: {
+              ...state.ui.loadingStates,
+              [LoadingStateKey.CREATE_DOCUMENT]: false,
+            },
+            errors: {
+              ...state.ui.errors,
+              [LoadingStateKey.CREATE_DOCUMENT]: error,
+            },
+          },
+        }), false, 'documents/createDocument/error');
+        return { data: null, error };
+      }
+      
+      // Add document to entities
+      set((state) => ({
+        ...state,
+        entities: {
+          ...state.entities,
+          documents: upsertEntity(state.entities.documents, data),
+        },
+        ui: {
+          ...state.ui,
+          loadingStates: {
+            ...state.ui.loadingStates,
+            [LoadingStateKey.CREATE_DOCUMENT]: false,
+          },
+          activeDocumentId: data.id,
+        },
+      }), false, 'documents/createDocument/success');
+      
+      return { data, error: null };
+    } catch (error) {
+      set((state) => ({
+        ...state,
+        ui: {
+          ...state.ui,
+          loadingStates: {
+            ...state.ui.loadingStates,
+            [LoadingStateKey.CREATE_DOCUMENT]: false,
+          },
+          errors: {
+            ...state.ui.errors,
+            [LoadingStateKey.CREATE_DOCUMENT]: error as Error,
+          },
+        },
+      }), false, 'documents/createDocument/error');
+      return { data: null, error: error as Error };
+    }
+  },
+  
+  updateDocumentById: async (documentId, updates) => {
+    set((state) => ({
+      ...state,
+      ui: {
+        ...state.ui,
+        loadingStates: {
+          ...state.ui.loadingStates,
+          [LoadingStateKey.SAVE_DOCUMENT]: true,
+        },
+        errors: {
+          ...state.ui.errors,
+          [LoadingStateKey.SAVE_DOCUMENT]: null,
+        },
+      },
+    }), false, 'documents/updateDocument/start');
+
+    try {
+      const user = get().user;
+      if (!user) {
+        return { error: new Error('User not authenticated') };
+      }
+      
+      // Get current document to merge updates
+      const currentDocument = get().entities.documents[documentId];
+      if (!currentDocument) {
+        return { error: new Error('Document not found') };
+      }
+      
+      const updatedDocumentData = {
+        ...currentDocument.document_data,
+        ...updates,
       };
       
-      set((state: RootState) => {
-        const updatedDocuments = {
-          ...(state.entities?.documents || {}), // Ensure documents object exists
-          [newDocument.id]: newDocument,
-        };
-        localStorage.setItem('coai-documents', JSON.stringify(updatedDocuments));
-        return {
+      const { data, error } = await supabase
+        .from('coai-documents')
+        .update({
+          document_data: updatedDocumentData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', documentId)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+      
+      if (error) {
+        set((state) => ({
           ...state,
-          entities: {
-            ...state.entities,
-            documents: updatedDocuments,
-          },
           ui: {
             ...state.ui,
-            activeDocumentId_doc: newDocument.id,
-            loadingStates_doc: { ...state.ui.loadingStates_doc, saveDocument: false },
+            loadingStates: {
+              ...state.ui.loadingStates,
+              [LoadingStateKey.SAVE_DOCUMENT]: false,
+            },
+            errors: {
+              ...state.ui.errors,
+              [LoadingStateKey.SAVE_DOCUMENT]: error,
+            },
           },
-        };
-      });
-      return newDocument;
+        }), false, 'documents/updateDocument/error');
+        return { error };
+      }
+      
+      // Update document in entities
+      set((state) => ({
+        ...state,
+        entities: {
+          ...state.entities,
+          documents: upsertEntity(state.entities.documents, data),
+        },
+        ui: {
+          ...state.ui,
+          loadingStates: {
+            ...state.ui.loadingStates,
+            [LoadingStateKey.SAVE_DOCUMENT]: false,
+          },
+        },
+      }), false, 'documents/updateDocument/success');
+      
+      return { error: null };
     } catch (error) {
-      console.error('Error creating document:', error);
-      set((state: RootState) => ({
+      set((state) => ({
         ...state,
         ui: {
           ...state.ui,
-          loadingStates_doc: { ...state.ui.loadingStates_doc, saveDocument: false },
+          loadingStates: {
+            ...state.ui.loadingStates,
+            [LoadingStateKey.SAVE_DOCUMENT]: false,
+          },
+          errors: {
+            ...state.ui.errors,
+            [LoadingStateKey.SAVE_DOCUMENT]: error as Error,
+          },
         },
-      }));
-      throw error;
+      }), false, 'documents/updateDocument/error');
+      return { error: error as Error };
     }
   },
   
-  updateDocument: async (id, data) => {
-    set((state: RootState) => ({
-      ...state,
-      ui: {
-        ...state.ui,
-        loadingStates_doc: { ...state.ui.loadingStates_doc, saveDocument: true },
-      },
-    }));
-    
+  deleteDocument: async (documentId) => {
     try {
-      const existingDocument = get().entities.documents[id];
-      if (!existingDocument) throw new Error(`Document with ID ${id} not found`);
+      const user = get().user;
+      if (!user) {
+        return { error: new Error('User not authenticated') };
+      }
       
-      const updatedDoc: Document = { ...existingDocument, ...data, updatedAt: new Date() };
+      const { error } = await supabase
+        .from('coai-documents')
+        .delete()
+        .eq('id', documentId)
+        .eq('user_id', user.id);
       
-      set((state: RootState) => {
-        const updatedDocuments = {
-          ...(state.entities?.documents || {}),
-          [id]: updatedDoc,
-        };
-        localStorage.setItem('coai-documents', JSON.stringify(updatedDocuments));
-        return {
-          ...state,
-          entities: {
-            ...state.entities,
-            documents: updatedDocuments,
-          },
-          ui: {
-            ...state.ui,
-            loadingStates_doc: { ...state.ui.loadingStates_doc, saveDocument: false },
-          },
-        };
-      });
-      return updatedDoc;
-    } catch (error) {
-      console.error('Error updating document:', error);
-      set((state: RootState) => ({
+      if (error) {
+        return { error };
+      }
+      
+      // Remove document from entities
+      set((state) => ({
         ...state,
+        entities: {
+          ...state.entities,
+          documents: removeEntity(state.entities.documents, documentId),
+        },
         ui: {
           ...state.ui,
-          loadingStates_doc: { ...state.ui.loadingStates_doc, saveDocument: false },
+          activeDocumentId: state.ui.activeDocumentId === documentId ? null : state.ui.activeDocumentId,
         },
-      }));
-      throw error;
-    }
-  },
-  
-  deleteDocument: async (id) => {
-    try {
-      set((state: RootState) => {
-        const { [id]: _, ...remainingDocuments } = (state.entities?.documents || {});
-        localStorage.setItem('coai-documents', JSON.stringify(remainingDocuments));
-        return {
-          ...state,
-          entities: {
-            ...state.entities,
-            documents: remainingDocuments,
-          },
-          ui: {
-            ...state.ui,
-            activeDocumentId_doc: state.ui.activeDocumentId_doc === id ? null : state.ui.activeDocumentId_doc,
-          },
-        };
-      });
+      }), false, 'documents/deleteDocument/success');
+      
+      return { error: null };
     } catch (error) {
-      console.error('Error deleting document:', error);
-      throw error;
+      return { error: error as Error };
     }
-  },
-  
-  setActiveDocument_doc: (id: string | null) => {
-    set((state: RootState) => ({
-      ...state,
-      ui: {
-        ...state.ui,
-        activeDocumentId_doc: id,
-      },
-    }));
   },
 }); 

@@ -455,6 +455,24 @@ The `data` field contains all message information including:
 - attachments
 - metadata (reactions, etc.)
 
+#### `coai-documents`
+```
+CREATE TABLE "coai-documents" (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES "coai-profiles"(user_id),
+  document_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+The `document_data` field contains all document information including:
+- title
+- content
+- type (text, markdown, code, note)
+- tags
+- metadata
+
 ### 7.2 Supporting Tables
 
 #### `coai-user-teams`
@@ -527,9 +545,16 @@ CREATE INDEX idx_user_teams_user ON "coai-user-teams" (user_id);
 -- For message sender lookups
 CREATE INDEX idx_messages_sender ON "coai-messages" (sender_id, sender_type);
 
+-- For efficient document retrieval by user
+CREATE INDEX idx_coai_documents_user_id ON "coai-documents" (user_id);
+CREATE INDEX idx_coai_documents_created_at ON "coai-documents" (created_at);
+CREATE INDEX idx_coai_documents_updated_at ON "coai-documents" (updated_at);
+
 -- For JSONB data queries on commonly accessed fields
 CREATE INDEX idx_threads_last_message ON "coai-threads" USING GIN ((data->>'last_message_at'));
 CREATE INDEX idx_synths_public ON "coai-synths" USING GIN ((data->>'is_public'));
+CREATE INDEX idx_documents_title ON "coai-documents" USING GIN ((document_data->>'title'));
+CREATE INDEX idx_documents_type ON "coai-documents" USING GIN ((document_data->>'type'));
 ```
 
 ### 7.5 Data Access Patterns
@@ -561,6 +586,26 @@ const publicSynths = await supabase
   .from('coai-synths')
   .select('*')
   .eq('data->>is_public', true);
+
+// Fetch user documents
+const documents = await supabase
+  .from('coai-documents')
+  .select('*')
+  .eq('user_id', userId)
+  .order('updated_at', { ascending: false });
+
+// Create a new document
+await supabase
+  .from('coai-documents')
+  .insert({
+    user_id: userId,
+    document_data: {
+      title: 'My Document',
+      content: 'Document content...',
+      type: 'markdown',
+      tags: ['work', 'notes']
+    }
+  });
 ```
 
 ### 7.6 Entity Relationships
@@ -592,7 +637,12 @@ Key relationships in the data model:
 
 7. **Threads and Synths** 
    - Threads involve one or more synths (stored as synth_ids array in thread data)
-   - No direct relationship between teams and threads 
+   - No direct relationship between teams and threads
+
+8. **Users and Documents**
+   - Users can create multiple documents (1:many)
+   - Documents are created by exactly one user
+   - Documents are independent entities not tied to teams or threads 
 
 ### 7.7 Authentication-Optional Considerations
 

@@ -687,6 +687,23 @@ class DirectService implements IDataService {
         
         console.log(`🤖 Generating response for ${synthData.reference.metadata?.name} (${i + 1}/${activeSynths.length}) at ${timestamp}`);
         
+        // Get the Zustand store for streaming
+        const { getState } = await import('../../stores');
+        const state = getState();
+        
+        // Start a streaming message BEFORE making the API call so ThinkingSpinner shows immediately
+        const aiEmployee = {
+          id: synthData.synthId,
+          name: synthData.reference.metadata?.name || 'AI',
+          role: synthData.reference.metadata?.role || 'Assistant',
+          profileImage: synthData.reference.metadata?.profileImage || '/default-avatar.png',
+          model: synthData.reference.metadata?.model || 'gpt-4'
+        };
+        
+        // Start streaming message using the proper method
+        const streamingMessageId = await state.startMessageStream(threadId, '', aiEmployee);
+        console.log(`🔍 DEBUG: Created streaming message ${streamingMessageId} for ${synthData.reference.metadata?.name}`);
+        
         const requestBody = {
           messages: chatHistory,
           role: synthData.reference.metadata?.role || 'Assistant',
@@ -722,6 +739,10 @@ class DirectService implements IDataService {
           } catch {
             // Ignore JSON parsing errors
           }
+          
+          // Cancel the streaming message if API call fails
+          state.cancelMessageStream(streamingMessageId);
+          
           throw new Error(
             `Chat API failed: ${response.status} ${response.statusText}` +
             ((errorData as any).error ? ` - ${(errorData as any).error}` : '')
@@ -734,22 +755,6 @@ class DirectService implements IDataService {
         let fullContent = '';
         
         console.log(`🔍 DEBUG: Starting to read streaming response for ${synthData.reference.metadata?.name}`);
-        
-        // Get the Zustand store for streaming
-        const { getState } = await import('../../stores');
-        const state = getState();
-        
-        // Start a streaming message
-        const aiEmployee = {
-          id: synthData.synthId,
-          name: synthData.reference.metadata?.name || 'AI',
-          role: synthData.reference.metadata?.role || 'Assistant',
-          profileImage: synthData.reference.metadata?.profileImage || '/default-avatar.png',
-          model: synthData.reference.metadata?.model || 'gpt-4'
-        };
-        
-        // Start streaming message using the proper method
-        const streamingMessageId = await state.startMessageStream(threadId, '', aiEmployee);
         
         if (reader) {
           try {

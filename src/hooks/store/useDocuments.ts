@@ -1,85 +1,62 @@
-import { useCallback, useEffect, useMemo } from 'react';
-import { useAppStore } from '../../stores/appStore';
-import { Document } from '../../types/store';
-import { denormalizeRecord } from '../../lib/utils/normalization';
+import { useAppStore } from '../../stores';
+import { LoadingStateKey } from '../../types/store';
 
 /**
  * Hook for managing documents
  * @returns Document management functions and state
  */
-export function useDocuments() {
-  // Get documents state from store
-  const documents = useAppStore((state) => state.entities.documents) || {};
+export const useDocuments = () => {
+  const documents = useAppStore((state) => state.entities.documents);
   const activeDocumentId = useAppStore((state) => state.ui.activeDocumentId);
-  const isLoading = useAppStore((state) => 
-    state.ui.loadingStates?.fetchDocuments || state.ui.loadingStates?.saveDocument
-  );
+  const isLoading = useAppStore((state) => state.ui.loadingStates[LoadingStateKey.FETCH_DOCUMENTS] || false);
+  const isCreating = useAppStore((state) => state.ui.loadingStates[LoadingStateKey.CREATE_DOCUMENT] || false);
+  const isSaving = useAppStore((state) => state.ui.loadingStates[LoadingStateKey.SAVE_DOCUMENT] || false);
+  const error = useAppStore((state) => state.ui.errors[LoadingStateKey.FETCH_DOCUMENTS]);
   
-  // Get document actions from store
   const fetchDocuments = useAppStore((state) => state.fetchDocuments);
   const createDocument = useAppStore((state) => state.createDocument);
-  const updateDocument = useAppStore((state) => state.updateDocument);
+  const updateDocument = useAppStore((state) => state.updateDocumentById);
   const deleteDocument = useAppStore((state) => state.deleteDocument);
-  const setActiveDocument = useAppStore((state) => state.setActiveDocument);
   
-  // Load documents on initial render
-  useEffect(() => {
-    fetchDocuments();
-  }, [fetchDocuments]);
-  
-  // Get documents as an array
-  const documentList = useMemo(() => {
-    return denormalizeRecord(documents);
-  }, [documents]);
-  
-  // Sort documents by updated date (newest first)
-  const sortedDocuments = useMemo(() => {
-    return [...documentList].sort((a, b) => 
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
-  }, [documentList]);
-  
-  // Get active document
-  const activeDocument = useMemo(() => {
-    return activeDocumentId ? documents[activeDocumentId] : null;
-  }, [documents, activeDocumentId]);
-  
-  // Create a new document with validation
-  const handleCreateDocument = useCallback(
-    async (data: { title: string; content: string }): Promise<Document> => {
-      if (!data.title.trim()) {
-        throw new Error('Document title is required');
-      }
-      
-      return createDocument(data);
-    },
-    [createDocument]
+  // Convert documents object to array and sort by updated_at
+  const documentsArray = Object.values(documents).sort((a, b) => 
+    new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
   );
   
-  // Update a document with validation
-  const handleUpdateDocument = useCallback(
-    async (id: string, data: Partial<Omit<Document, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Document> => {
-      if (data.title !== undefined && !data.title.trim()) {
-        throw new Error('Document title cannot be empty');
-      }
-      
-      return updateDocument(id, data);
-    },
-    [updateDocument]
-  );
+  const activeDocument = activeDocumentId ? documents[activeDocumentId] : null;
+  
+  const setActiveDocument = (documentId: string | null) => {
+    useAppStore.setState((state) => ({
+      ui: {
+        ...state.ui,
+        activeDocumentId: documentId,
+      },
+    }));
+  };
   
   return {
-    // State
-    documents: sortedDocuments,
+    documents: documentsArray,
+    documentsById: documents,
     activeDocument,
     activeDocumentId,
     isLoading,
+    isCreating,
+    isSaving,
+    error,
     
     // Actions
     fetchDocuments,
-    createDocument: handleCreateDocument,
-    updateDocument: handleUpdateDocument,
+    createDocument,
+    updateDocument,
     deleteDocument,
     setActiveDocument,
   };
-} 
+};
+
+export const useDocument = (documentId: string | undefined) => {
+  const document = useAppStore((state) => 
+    documentId ? state.entities.documents[documentId] : null
+  );
+  
+  return document;
+}; 

@@ -40,9 +40,7 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
   isWaitingForStream = false,
   incomingMessageCount = 0,
   globalSpacebarCount = 0,
-  onSetDocumentMentionHandler,
 }) => {
-  console.log('🚨 [COMPONENT MOUNT DEBUG] MessageInputWithMentions mounted with onSetDocumentMentionHandler:', !!onSetDocumentMentionHandler);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -205,53 +203,7 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
 
   // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Debug handler: Shift+Alt+T creates a test thread
-    if (e.shiftKey && e.altKey && e.key === 'T') {
-      console.log('🔧 [DEBUG TEST] Creating test thread...');
-      
-      // Import and use the direct thread creation for testing
-      import('../../lib/services/directService').then(({ directService }) => {
-        directService.createThread('Test Thread ' + new Date().toLocaleTimeString())
-          .then(thread => {
-            console.log('🔧 [DEBUG TEST] Test thread created:', thread);
-            
-            // Set active thread in store
-            import('../../stores/appStore').then(({ useAppStore }) => {
-              useAppStore.setState(state => ({
-                ui: {
-                  ...state.ui,
-                  activeThreadId: thread.id
-                }
-              }));
-              console.log('🔧 [DEBUG TEST] Active thread set to:', thread.id);
-            });
-          })
-          .catch(error => {
-            console.error('🔧 [DEBUG TEST] Error creating test thread:', error);
-          });
-      });
-      
-      e.preventDefault();
-      return;
-    }
-    
-    // Debug handler: Shift+Alt+M logs the UI state
-    if (e.shiftKey && e.altKey && e.key === 'M') {
-      import('../../stores/appStore').then(({ useAppStore }) => {
-        const state = useAppStore.getState();
-        console.log('🔧 [DEBUG TEST] Current UI state:', {
-          activeThreadId: state.ui.activeThreadId,
-          activeTeamId: state.ui.activeTeamId,
-          selectedSynthId: state.ui.selectedSynthId,
-          messageInput: state.ui.messageInput,
-          threadMessages: state.relationships.threadMessages,
-          messages: state.entities.messages,
-          threads: state.entities.threads
-        });
-      });
-      e.preventDefault();
-      return;
-    }
+
 
     // Handle spacebar in empty input to trigger AI continuation (but global handler will take precedence)
     if (e.key === ' ' && !message.trim() && onAIContinue && !isWaitingForStream) {
@@ -467,9 +419,8 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
           // Handle document drop by inserting mention
           const doc = parsedData.document;
           
-          // Add null check to prevent errors
-          if (!doc || !doc.title) {
-            console.error('Invalid document in drop data:', doc);
+          // Add null check to prevent errors - check for document_data structure
+          if (!doc || !doc.document_data || !doc.document_data.title) {
             return;
           }
           
@@ -477,13 +428,13 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
           const afterCursor = message.substring(cursorPosition);
           
           // Create a document mention format with hidden content for AI context
-          const documentMention = `📄[${doc.title}]`;
+          const documentMention = `📄[${doc.document_data.title}]`;
           const hiddenContext = `\n\n<!-- DOCUMENT_CONTEXT: 
-Document Title: "${doc.title}"
+Document Title: "${doc.document_data.title}"
 Document ID: ${doc.id}
-Content: ${doc.content || 'No content available'}
-Created: ${doc.createdAt || 'Unknown'}
-Updated: ${doc.updatedAt || 'Unknown'}
+Content: ${doc.document_data.content || 'No content available'}
+Created: ${doc.created_at || 'Unknown'}
+Updated: ${doc.updated_at || 'Unknown'}
 -->`;
           
           const newText = `${beforeCursor}${documentMention}${hiddenContext} ${afterCursor}`;
@@ -603,8 +554,55 @@ Updated: ${doc.updatedAt || 'Unknown'}
     );
   };
 
+  // Listen for custom document drop events from ChatSection
+  useEffect(() => {
+    const handleCustomDocumentDrop = (e: CustomEvent) => {
+      const doc = e.detail.document;
+      
+      // Add null check to prevent errors - check for document_data structure
+      if (!doc || !doc.document_data || !doc.document_data.title) {
+        return;
+      }
+      
+      const beforeCursor = message.substring(0, cursorPosition);
+      const afterCursor = message.substring(cursorPosition);
+      
+      // Create a document mention format with hidden content for AI context
+      const documentMention = `📄[${doc.document_data.title}]`;
+      const hiddenContext = `\n\n<!-- DOCUMENT_CONTEXT: 
+Document Title: "${doc.document_data.title}"
+Document ID: ${doc.id}
+Content: ${doc.document_data.content || 'No content available'}
+Created: ${doc.created_at || 'Unknown'}
+Updated: ${doc.updated_at || 'Unknown'}
+-->`;
+      
+      const newText = `${beforeCursor}${documentMention}${hiddenContext} ${afterCursor}`;
+      const newCursorPosition = beforeCursor.length + documentMention.length + hiddenContext.length + 1;
+      
+      setMessage(newText);
+      setCursorPosition(newCursorPosition);
+      
+      // Focus the textarea and set cursor position
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
+        }
+      }, 0);
+    };
+
+    const container = document.querySelector('[data-message-input-container]');
+    if (container) {
+      container.addEventListener('documentDrop', handleCustomDocumentDrop as EventListener);
+      return () => {
+        container.removeEventListener('documentDrop', handleCustomDocumentDrop as EventListener);
+      };
+    }
+  }, [message, cursorPosition, setMessage, setCursorPosition]);
+
   return (
-    <div className="p-3 border-t border-neutral-200 dark:border-neutral-800">
+    <div className="p-3 border-t border-neutral-200 dark:border-neutral-800" data-message-input-container>
       {/* Image attachment preview */}
       {attachedImage && (
         <div className="mb-3 p-3 bg-neutral-50 dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-700">

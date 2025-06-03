@@ -5,6 +5,8 @@ import {
   COAITeam, 
   Thread, 
   COAIMessage,
+  COAIDocument,
+  COAIDocumentData,
   AIEmployee,
   COAISynthData,
   COAITeamData,
@@ -13,7 +15,7 @@ import {
   COAIMessageData
 } from './index';
 
-// Document type for documents slice
+// Legacy Document type for backward compatibility
 export interface Document {
   id: string;
   title: string;
@@ -50,7 +52,7 @@ export interface NormalizedEntities {
   threads: Record<string, Thread>;
   messages: Record<string, COAIMessage & { _isOptimistic?: boolean }>;
   aiEmployees: Record<string, AIEmployee>;
-  documents: Record<string, Document>;
+  documents: Record<string, COAIDocument>;
 }
 
 // Relationships between entities
@@ -177,11 +179,15 @@ export interface RootState {
   setProfileDeleteDialogOpen: (deleteDialogOpen: boolean) => void;
 
   // Documents slice methods will be injected here
-  fetchDocuments: () => Promise<void>;
-  createDocument: (data: { title: string; content: string }) => Promise<Document>;
-  updateDocument: (id: string, data: Partial<Omit<Document, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<Document>;
-  deleteDocument: (id: string) => Promise<void>;
-  setActiveDocument: (id: string | null) => void;
+  fetchDocuments: () => Promise<{ error: Error | null }>;
+  createDocument: (documentData: COAIDocumentData) => Promise<{ data: COAIDocument | null; error: Error | null }>;
+  updateDocumentById: (documentId: string, updates: Partial<COAIDocumentData>) => Promise<{ error: Error | null }>;
+  deleteDocument: (documentId: string) => Promise<{ error: Error | null }>;
+  
+  // API Key persistence methods
+  saveApiKey: (provider: string, key: string) => Promise<{ error: Error | null }>;
+  removeApiKey: (provider: string) => Promise<{ error: Error | null }>;
+  getApiKey: (provider: string) => string | undefined;
 }
 
 // Loading state keys

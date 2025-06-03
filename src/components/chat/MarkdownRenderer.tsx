@@ -72,22 +72,22 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
         components={{
         // Headings
         h1: ({ children }) => (
-          <h1 className="text-lg font-bold mb-2 mt-4 first:mt-0">{children}</h1>
+          <h1 className="text-xl font-bold mb-3 mt-4 first:mt-0 text-neutral-900 dark:text-neutral-100">{children}</h1>
         ),
         h2: ({ children }) => (
-          <h2 className="text-base font-bold mb-2 mt-3 first:mt-0">{children}</h2>
+          <h2 className="text-lg font-bold mb-2 mt-3 first:mt-0 text-neutral-900 dark:text-neutral-100">{children}</h2>
         ),
         h3: ({ children }) => (
-          <h3 className="text-sm font-semibold mb-1 mt-2 first:mt-0">{children}</h3>
+          <h3 className="text-base font-semibold mb-2 mt-3 first:mt-0 text-neutral-900 dark:text-neutral-100">{children}</h3>
         ),
         h4: ({ children }) => (
-          <h4 className="text-sm font-medium mb-1 mt-2 first:mt-0">{children}</h4>
+          <h4 className="text-sm font-semibold mb-1 mt-2 first:mt-0 text-neutral-800 dark:text-neutral-200">{children}</h4>
         ),
         h5: ({ children }) => (
-          <h5 className="text-xs font-medium mb-1 mt-1 first:mt-0">{children}</h5>
+          <h5 className="text-sm font-medium mb-1 mt-2 first:mt-0 text-neutral-800 dark:text-neutral-200">{children}</h5>
         ),
         h6: ({ children }) => (
-          <h6 className="text-xs font-medium mb-1 mt-1 first:mt-0">{children}</h6>
+          <h6 className="text-xs font-medium mb-1 mt-1 first:mt-0 text-neutral-700 dark:text-neutral-300">{children}</h6>
         ),
         
         // Paragraphs
@@ -95,20 +95,20 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
           // Handle mentions in paragraph text
           if (typeof children === 'string') {
             const parsedContent = renderMentions(children, employees);
-            return <p className="mb-2 last:mb-0">{parsedContent}</p>;
+            return <p className="mb-3 last:mb-0 leading-relaxed text-neutral-800 dark:text-neutral-200">{parsedContent}</p>;
           }
-          return <p className="mb-2 last:mb-0">{children}</p>;
+          return <p className="mb-3 last:mb-0 leading-relaxed text-neutral-800 dark:text-neutral-200">{children}</p>;
         },
         
         // Lists
         ul: ({ children }) => (
-          <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>
+          <ul className="list-disc list-inside mb-3 space-y-1 pl-2 text-neutral-800 dark:text-neutral-200">{children}</ul>
         ),
         ol: ({ children }) => (
-          <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>
+          <ol className="list-decimal list-inside mb-3 space-y-1 pl-2 text-neutral-800 dark:text-neutral-200">{children}</ol>
         ),
         li: ({ children }) => (
-          <li className="text-sm">{children}</li>
+          <li className="leading-relaxed">{children}</li>
         ),
         
         // Code
@@ -117,7 +117,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
           if (isInline) {
             return (
               <code 
-                className="bg-neutral-200 dark:bg-neutral-700 px-1 py-0.5 rounded text-xs font-mono"
+                className="bg-neutral-200 dark:bg-neutral-700 px-1.5 py-0.5 rounded text-sm font-mono text-neutral-900 dark:text-neutral-100"
                 {...props}
               >
                 {children}
@@ -126,7 +126,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
           }
           return (
             <code 
-              className="block bg-neutral-200 dark:bg-neutral-700 p-2 rounded text-xs font-mono overflow-x-auto mb-2"
+              className="block bg-neutral-200 dark:bg-neutral-700 p-3 rounded text-sm font-mono overflow-x-auto mb-3 text-neutral-900 dark:text-neutral-100"
               {...props}
             >
               {children}
@@ -136,14 +136,14 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
         
         // Pre-formatted text (code blocks)
         pre: ({ children }) => (
-          <pre className="bg-neutral-200 dark:bg-neutral-700 p-2 rounded text-xs font-mono overflow-x-auto mb-2 whitespace-pre-wrap">
+          <pre className="bg-neutral-200 dark:bg-neutral-700 p-3 rounded text-sm font-mono overflow-x-auto mb-3 whitespace-pre-wrap text-neutral-900 dark:text-neutral-100">
             {children}
           </pre>
         ),
         
         // Blockquotes
         blockquote: ({ children }) => (
-          <blockquote className="border-l-2 border-neutral-300 dark:border-neutral-600 pl-3 italic mb-2 text-neutral-600 dark:text-neutral-400">
+          <blockquote className="border-l-4 border-neutral-300 dark:border-neutral-600 pl-4 italic mb-3 text-neutral-600 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 py-2 rounded-r">
             {children}
           </blockquote>
         ),

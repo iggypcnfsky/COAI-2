@@ -168,6 +168,8 @@ Before proceeding with Phase 3, validate that the Zustand implementation is read
   - [x] Add privacy toggles for synths and teams in creation and edit modals
   - [x] Update API utility functions to get API keys from Zustand store instead of localStorage
   - [x] Update image generation to save files to Supabase Storage instead of returning base64 data
+  - [x] Fix synth ordering in browser to show most recently created synths at the top
+  - [x] Fix team ordering in browser to show most recently created teams at the top
 
 ## References
 

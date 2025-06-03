@@ -32,6 +32,7 @@ const normalizeMessage = (msg: ChatMessageType | COAIMessage): ChatMessageType =
       sender: msg.message_data.sender as 'user' | 'ai' || 'ai',
       timestamp,
       aiEmployee: msg.message_data.aiEmployee,
+      isLoading: msg.message_data.isLoading || false,
       ...msg.message_data.metadata
     } as ChatMessageType;
   }
@@ -134,7 +135,32 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     return threadMessagesList;
   }, [activeThreadId, threadMessages, messages]);
   
-  const isWaitingForStream = propsIsWaitingForStream || isSending;
+  // Check if any messages are currently loading (streaming)
+  const hasLoadingMessages = useMemo(() => {
+    return activeThreadMessages.some(msg => {
+      if ('message_data' in msg) {
+        return msg.message_data.isLoading;
+      }
+      return false;
+    });
+  }, [activeThreadMessages]);
+  
+  const isWaitingForStream = propsIsWaitingForStream || isSending || hasLoadingMessages;
+  
+  // Debug logging for loading states
+  useEffect(() => {
+    console.log('🔍 [THINKING SPINNER DEBUG] Loading states:', {
+      propsIsWaitingForStream,
+      isSending,
+      hasLoadingMessages,
+      isWaitingForStream,
+      isMessagesLoading,
+      activeThreadMessagesCount: activeThreadMessages.length,
+      loadingMessages: activeThreadMessages.filter(msg => 
+        'message_data' in msg && msg.message_data.isLoading
+      ).map(msg => ({ id: msg.id, content: msg.message_data.content }))
+    });
+  }, [propsIsWaitingForStream, isSending, hasLoadingMessages, isWaitingForStream, isMessagesLoading, activeThreadMessages.length]);
 
   const handleSendMessage = useCallback(async (messageData: { display: string; full: string }, attachedImage?: any) => {
     console.log('🔍 [DEBUG] ChatSection.handleSendMessage called:', {
@@ -292,7 +318,6 @@ const ChatSection: React.FC<ChatSectionProps> = ({
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
     setIsDragOver(false);
     setDragType(null);
     
@@ -307,33 +332,30 @@ const ChatSection: React.FC<ChatSectionProps> = ({
       console.log('🚨 [CHAT SECTION DROP DEBUG] Parsed data:', parsedData);
       
       if (parsedData.type === 'document' && parsedData.document) {
-        const doc = parsedData.document;
-        console.log('🚨 [CHAT SECTION DROP DEBUG] Document detected:', doc);
+        console.log('🚨 [CHAT SECTION DROP DEBUG] Document detected, handling directly');
+        e.preventDefault(); // Prevent default to avoid any unwanted behavior
         
         // Handle document drop by directly calling the message input's document handler
-        // We'll get a reference to the MessageInputWithMentions component and call its method
-        const messageInputElement = document.querySelector('textarea[placeholder*="Type your message"]') as HTMLTextAreaElement;
+        const doc = parsedData.document;
         
-        if (messageInputElement && doc && doc.title) {
-          console.log('🚨 [CHAT SECTION DROP DEBUG] Found message input, simulating document drop');
-          
-          // Create a synthetic drop event on the message input
-          const syntheticEvent = new DragEvent('drop', {
-            bubbles: true,
-            cancelable: true,
-            dataTransfer: e.dataTransfer
+        // Find the MessageInputWithMentions component and trigger its document handling
+        const messageInputContainer = document.querySelector('[data-message-input-container]');
+        if (messageInputContainer) {
+          // Create a custom event with the document data
+          const customEvent = new CustomEvent('documentDrop', {
+            detail: { document: doc }
           });
-          
-          // Dispatch the event to the message input
-          messageInputElement.dispatchEvent(syntheticEvent);
+          messageInputContainer.dispatchEvent(customEvent);
         } else {
-          console.error('🚨 [CHAT SECTION DROP DEBUG] Could not find message input or invalid document:', { 
-            hasInput: !!messageInputElement, 
-            doc 
-          });
+          console.error('🚨 [CHAT SECTION DROP DEBUG] Could not find message input container');
         }
+        return;
       }
-      else if ((parsedData.type === 'team' || parsedData.type === 'custom-team') && parsedData.employees) {
+      
+      // Only prevent default for non-document drops
+      e.preventDefault();
+      
+      if ((parsedData.type === 'team' || parsedData.type === 'custom-team') && parsedData.employees) {
         if (onAddTeam) {
           onAddTeam(parsedData.employees);
         }
@@ -346,6 +368,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
       }
     } catch (error) {
       console.error('Error parsing dropped data:', error);
+      e.preventDefault(); // Prevent default on error
     }
   }, [onAddTeam, onAddTeamMember, teamMembers]);
 

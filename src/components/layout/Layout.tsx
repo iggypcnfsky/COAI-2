@@ -98,7 +98,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     if (user && teams.length === 0 && !isLoadingData) {
       const cachedTeams = loadThreadsCache();
       if (cachedTeams.length > 0) {
-        console.log('📦 Loading cached teams for instant display:', cachedTeams.length);
         setTeams(cachedTeams);
       }
     }
@@ -132,10 +131,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   // Function to refetch thread synths
   const refetchThreadSynths = useCallback(() => {
     if (activeThreadId) {
-      console.log('🔍 DEBUG: refetchThreadSynths called for thread:', activeThreadId);
       getThreadSynths(activeThreadId);
-    } else {
-      console.log('🔍 DEBUG: refetchThreadSynths called but no activeThreadId');
     }
   }, [activeThreadId, getThreadSynths]);
 
@@ -146,12 +142,9 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   
   // Convert store synths directly to team members - no complex adaptation needed
   const threadTeamMembers = useMemo(() => {
-    console.log('🔍 DEBUG: Converting threadSynths to teamMembers:', threadSynths.length, 'synths');
-    
     return threadSynths.map(synth => {
       // COAISynth has synth_data property with the actual data
       const synthData = synth.synth_data || {};
-      console.log('🔍 DEBUG: Processing synth:', synth.id, 'with data:', synthData.name);
       
       return {
         id: synth.id,
@@ -245,7 +238,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         }, {} as Record<string, COAITeamSynth[]>);
         
         setTeamSynthsMap(newTeamSynthsMap);
-        // Debug logging removed to reduce console noise
       } catch (error) {
         console.error('❌ Failed to load team synths:', error);
       }
@@ -256,7 +248,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
 
   // Convert Supabase teams to CustomTeam format for the UI with populated synths
   const customTeams = React.useMemo(() => {
-    return supabaseTeams.map(team => {
+    // Convert teams and preserve creation timestamp for sorting
+    const convertedTeams = supabaseTeams.map(team => {
       const teamSynths = teamSynthsMap[team.id] || [];
       
       // Convert team synths to selectedSynths format
@@ -308,9 +301,20 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         name: team.team_data.name,
         description: team.team_data.description,
         teamImage: team.team_data.teamImage,
-        selectedSynths
-      } as CustomTeam;
+        selectedSynths,
+        _createdAt: team.created_at // Preserve creation timestamp for sorting
+      } as CustomTeam & { _createdAt: string };
     });
+    
+    // Sort by creation time (newest first) to ensure proper order
+    const sortedTeams = convertedTeams.sort((a, b) => {
+      const timeA = a._createdAt || '0';
+      const timeB = b._createdAt || '0';
+      return timeB.localeCompare(timeA); // Newest first
+    });
+    
+    // Remove the temporary _createdAt property before returning
+    return sortedTeams.map(({ _createdAt, ...team }) => team as CustomTeam);
   }, [supabaseTeams, teamSynthsMap, customSynths]);
 
 
@@ -320,15 +324,12 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   // Convert thread synths to team members for UI - this is the ONLY sync we need
   React.useEffect(() => {
     if (user && activeThreadId) {
-      console.log('🔍 DEBUG: Loading thread synths for:', activeThreadId);
       refetchThreadSynths();
     }
   }, [user, activeThreadId, refetchThreadSynths]);
 
   // Sync the converted team members to UI state
   React.useEffect(() => {
-    console.log('🔍 DEBUG: Syncing threadTeamMembers to UI state:', threadTeamMembers.length);
-    
     // Simply set the team members from the store conversion
     setTeamMembers(threadTeamMembers);
     
@@ -349,33 +350,24 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
 
   // Sync Supabase synths with local state - MERGE instead of replace to prevent duplicates
   React.useEffect(() => {
-    console.log('🔍 [DUPLICATE DEBUG] Supabase sync effect triggered');
-    console.log('🔍 [DUPLICATE DEBUG] user:', !!user);
-    console.log('🔍 [DUPLICATE DEBUG] supabaseCustomSynths length:', supabaseCustomSynths?.length || 0);
-    console.log('🔍 [DUPLICATE DEBUG] supabaseCustomSynths IDs:', supabaseCustomSynths?.map(s => s.id) || []);
-    
     if (user && supabaseCustomSynths) {
       if (supabaseCustomSynths.length > 0) {
-        // Convert COAISynth to AIEmployee format
-        const convertedSynths: AIEmployee[] = supabaseCustomSynths.map(synthRow => ({
+        // Convert COAISynth to AIEmployee format, preserving creation timestamp for sorting
+        const convertedSynths: (AIEmployee & { _createdAt?: string })[] = supabaseCustomSynths.map(synthRow => ({
           id: synthRow.id,
-          ...synthRow.synth_data
+          ...synthRow.synth_data,
+          _createdAt: synthRow.created_at // Preserve creation timestamp for sorting
         }));
-        
-        console.log('🔍 [DUPLICATE DEBUG] Converted synths from Supabase:', convertedSynths.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
         
         // MERGE with existing local state to preserve local-only properties like isLoadingImage
         setCustomSynths(prev => {
-          console.log('🔍 [DUPLICATE DEBUG] Current local synths before merge:', prev.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
-          
           const existingLocalSynths = new Map(prev.map(synth => [synth.id, synth]));
-          const mergedSynths: AIEmployee[] = [];
+          const mergedSynths: (AIEmployee & { _createdAt?: string })[] = [];
           
           // Add/update synths from Supabase, preserving local properties
           for (const supabaseSynth of convertedSynths) {
             const existingLocal = existingLocalSynths.get(supabaseSynth.id);
             if (existingLocal) {
-              console.log('🔍 [DUPLICATE DEBUG] Merging existing synth:', supabaseSynth.id, 'preserving isLoadingImage:', existingLocal.isLoadingImage);
               // Merge: use Supabase data but preserve local-only properties
               mergedSynths.push({
                 ...supabaseSynth,
@@ -383,7 +375,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               });
               existingLocalSynths.delete(supabaseSynth.id); // Mark as processed
             } else {
-              console.log('🔍 [DUPLICATE DEBUG] Adding new synth from Supabase:', supabaseSynth.id);
               // New synth from Supabase - check if it needs image loading
               const synthWithLoadingState = {
                 ...supabaseSynth,
@@ -395,21 +386,30 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           }
           
           // Add any remaining local-only synths (e.g., ones still being saved)
+          // Give them a very recent timestamp so they appear at the top
+          const now = new Date().toISOString();
           for (const localSynth of existingLocalSynths.values()) {
-            console.log('🔍 [DUPLICATE DEBUG] Preserving local-only synth:', localSynth.id, 'isLoadingImage:', localSynth.isLoadingImage);
-            mergedSynths.push(localSynth);
+            mergedSynths.push({
+              ...localSynth,
+              _createdAt: now // Local synths (being created) should appear at the top
+            });
           }
           
-          console.log('🔍 [DUPLICATE DEBUG] Final merged synths:', mergedSynths.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
-          return mergedSynths;
+          // Sort by creation time (newest first) to ensure proper order
+          const sortedSynths = mergedSynths.sort((a, b) => {
+            const timeA = a._createdAt || '0';
+            const timeB = b._createdAt || '0';
+            return timeB.localeCompare(timeA); // Newest first
+          });
+          
+          // Remove the temporary _createdAt property before returning
+          return sortedSynths.map(({ _createdAt, ...synth }) => synth as AIEmployee);
         });
       } else {
-        console.log('🔍 [DUPLICATE DEBUG] No synths in Supabase, filtering local synths');
         // User is logged in but has no synths in Supabase
         // Only clear if we don't have any local synths that might be in the process of being saved
         setCustomSynths(prev => {
           const filtered = prev.filter(synth => synth.isLoadingImage || synth.id.startsWith('temp-'));
-          console.log('🔍 [DUPLICATE DEBUG] Filtered local synths:', filtered.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
           return filtered;
         });
       }
@@ -432,11 +432,10 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         return;
       }
       
-      try {
-        setIsLoadingData(true);
-        // Debug logging removed to reduce console noise
-        
-        // Load threads (chat conversations) and active thread
+              try {
+          setIsLoadingData(true);
+          
+          // Load threads (chat conversations) and active thread
         const [loadedThreads, loadedActiveThreadId] = await Promise.all([
           directService.fetchThreads(),
           directService.getActiveThreadId()
@@ -491,14 +490,12 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           // If we have threads that start with 'thread-' (optimistic), preserve them
           const optimisticThreads = prev.filter(t => t.id.startsWith('thread-'));
           if (optimisticThreads.length > 0) {
-            console.log('⚠️ Preserving optimistic threads and merging with Supabase data:', optimisticThreads.map(t => t.id));
             // Merge loaded threads with optimistic ones, keeping optimistic ones at the top
             const nonOptimisticLoaded = threadsAsTeams.filter(t => !optimisticThreads.some(opt => opt.id === t.id));
             const finalThreads = [...optimisticThreads, ...nonOptimisticLoaded];
             saveThreadsCache(finalThreads);
             return finalThreads;
           }
-          // Debug logging removed to reduce console noise
           saveThreadsCache(threadsAsTeams);
           return threadsAsTeams;
         });
@@ -516,7 +513,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
             const threadMessages = await directService.fetchMessages(loadedActiveThreadId);
             const convertedMessages = threadMessages.map(msg => directService.convertMessageDataToChatMessage(msg));
             setMessages(convertedMessages);
-            // Debug logging removed to reduce console noise
           } catch (error) {
             console.error('❌ Failed to load thread messages:', error);
           }
@@ -549,13 +545,10 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
 
   // Handler for adding new custom synth
   const handleAddNewSynth = React.useCallback(async (newSynth: AIEmployee) => {
-    console.log('🔍 [DUPLICATE DEBUG] handleAddNewSynth called with:', { id: newSynth.id, name: newSynth.name, isLoadingImage: newSynth.isLoadingImage });
-    
     let finalSynth = newSynth;
     
     // If user is logged in, persist to Supabase first to get the correct ID
     if (user) {
-      console.log('🔍 [DUPLICATE DEBUG] User authenticated, saving to Supabase first');
       try {
         // Convert AIEmployee to COAISynthData format
         const synthData: COAISynthData = {
@@ -572,40 +565,32 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         
         const savedSynth = await createSynth(synthData);
         if (savedSynth) {
-          console.log('✅ [DUPLICATE DEBUG] Synth successfully saved to Supabase:', savedSynth.id);
-          
           // Create the synth with the Supabase-generated ID
           finalSynth = {
             ...newSynth,
             id: savedSynth.id
           };
           
-          console.log('🔍 [DUPLICATE DEBUG] Final synth after Supabase save:', { id: finalSynth.id, name: finalSynth.name, isLoadingImage: finalSynth.isLoadingImage });
-          
           // For authenticated users, DON'T add to local state immediately
           // Let the Supabase sync handle it entirely to prevent duplicates
-          console.log('🔍 [DUPLICATE DEBUG] Not adding to local state - letting Supabase sync handle it to prevent duplicates');
           // If no image loading needed, let the Supabase sync handle it entirely
         } else {
-          console.error('❌ [DUPLICATE DEBUG] Failed to save synth to Supabase - no data returned');
+          console.error('❌ Failed to save synth to Supabase - no data returned');
           // Fallback: add to local state anyway
           setCustomSynths(prev => [finalSynth, ...prev]);
         }
       } catch (error) {
-        console.error('❌ [DUPLICATE DEBUG] Failed to save synth to Supabase:', error);
+        console.error('❌ Failed to save synth to Supabase:', error);
         // Fallback: add to local state anyway
         setCustomSynths(prev => [finalSynth, ...prev]);
       }
     } else {
-      console.log('🔍 [DUPLICATE DEBUG] User not authenticated, adding to local state immediately');
       // For unauthenticated users, add to local state immediately
       setCustomSynths(prev => [finalSynth, ...prev]);
     }
     
     // Handle background image generation if needed
     if (finalSynth.isLoadingImage) {
-      console.log('🎨 Starting background image generation for synth:', finalSynth.name);
-      
       // Import the generateSynthImage function dynamically to avoid circular dependencies
       import('@/lib/api-utils').then(({ generateSynthImage }) => {
         generateSynthImage({
@@ -617,8 +602,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           baseModel: finalSynth.baseModel,
           profileImage: finalSynth.profileImage, // Current placeholder
         }).then((realProfileImage) => {
-          console.log('✅ [DUPLICATE DEBUG] Background image completed for:', finalSynth.name, 'ID:', finalSynth.id);
-          
           // Update the synth with the real image
           const updatedSynth: AIEmployee = {
             ...finalSynth,
@@ -626,13 +609,9 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
             isLoadingImage: false,
           };
           
-          console.log('🔍 [DUPLICATE DEBUG] Updating synth with real image:', { id: updatedSynth.id, name: updatedSynth.name, isLoadingImage: updatedSynth.isLoadingImage });
-          
           // Update in local state
           setCustomSynths(prev => {
-            console.log('🔍 [DUPLICATE DEBUG] Current synths before image update:', prev.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
             const updated = prev.map(synth => synth.id === finalSynth.id ? updatedSynth : synth);
-            console.log('🔍 [DUPLICATE DEBUG] Synths after image update:', updated.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
             return updated;
           });
           
@@ -703,9 +682,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         };
         
         const success = await updateSynth(updatedSynth.id, synthData);
-        if (success) {
-          console.log('✅ Synth successfully updated in Supabase:', updatedSynth.id);
-        } else {
+        if (!success) {
           console.error('❌ Failed to update synth in Supabase');
         }
       } catch (error) {
@@ -727,7 +704,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     if (user) {
       try {
         await deleteSynth(synthId);
-        console.log('✅ Synth successfully deleted from Supabase:', synthId);
       } catch (error) {
         console.error('❌ Failed to delete synth from Supabase:', error);
         // Keep the local deletion even if Supabase deletion fails
@@ -767,7 +743,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
             
             if (synthExists) {
               await removeSynthFromThread(activeThreadId, id);
-              console.log('✅ Synth removed from thread in database:', id);
             }
           } catch (error) {
             console.error('❌ Failed to remove synth from thread in database:', error);
@@ -803,28 +778,20 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   }, []);
 
   const handleAddNewTeam = React.useCallback(async (newTeam: CustomTeam) => {
-    console.log(`🔍 [ADD TEAM DEBUG] Adding new team: ${newTeam.name}`);
-    console.log(`🔍 [ADD TEAM DEBUG] Team has ${newTeam.selectedSynths.length} synths:`, newTeam.selectedSynths.map(s => ({ id: s.id, name: s.name })));
-    
     // First, extract any new synths that aren't already in customSynths
     const existingSynthIds = new Set([
       ...customSynths.map(s => s.id)
     ]);
-
-    console.log(`🔍 [ADD TEAM DEBUG] Existing synth IDs:`, Array.from(existingSynthIds));
 
     // Include synths with temp IDs as new synths
     const newSynths = newTeam.selectedSynths.filter(synth => 
       !existingSynthIds.has(synth.id) || synth.id.startsWith('temp-synth-')
     );
 
-    console.log(`🔍 [ADD TEAM DEBUG] New synths to add:`, newSynths.map(s => ({ id: s.id, name: s.name })));
-
     // Save new synths and collect their real IDs
     const savedSynthIdMap = new Map<string, string>(); // temp ID -> real ID
     
     if (newSynths.length > 0) {
-      console.log(`🆕 Adding ${newSynths.length} new AI-generated synths to global customSynths:`, newSynths.map(s => s.name));
       
       // Save new synths to Supabase if user is authenticated
       if (user) {
@@ -845,7 +812,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
             const savedSynth = await createSynth(synthData);
             if (savedSynth && savedSynth.id) {
               savedSynthIdMap.set(synth.id, savedSynth.id);
-              console.log('✅ New synth saved to Supabase:', synth.name, 'with ID:', savedSynth.id);
             }
           } catch (error) {
             console.error('❌ Failed to save new synth to Supabase:', error);
@@ -856,7 +822,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       if (user) {
         // For authenticated users, DON'T add to local state immediately
         // Let the Supabase sync handle it entirely to prevent duplicates
-        console.log('🔍 [ADD TEAM DEBUG] Not adding synths to local state - letting Supabase sync handle it to prevent duplicates');
       } else {
         // For unauthenticated users, add to local state immediately
         const synthsWithRealIds = newSynths.map(synth => ({
@@ -866,19 +831,14 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         
         setCustomSynths(prev => {
           const updated = [...synthsWithRealIds, ...prev];
-          console.log(`🔍 [ADD TEAM DEBUG] Updated customSynths array now has ${updated.length} synths:`, updated.map(s => ({ id: s.id, name: s.name })));
           return updated;
         });
       }
-    } else {
-      console.log(`🔍 [ADD TEAM DEBUG] No new synths to add - all already exist`);
     }
 
     // Save team to Supabase if user is authenticated
     if (user) {
       try {
-        console.log('💾 Saving team to Supabase:', newTeam.name);
-        
         // Convert CustomTeam to COAITeamData format
         // Store original keywords for later image generation
         const originalKeywords = (newTeam as any).originalKeywords || 'professional team';
@@ -915,16 +875,11 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           };
         });
 
-        console.log('🔍 [ADD TEAM DEBUG] Synth references for team:', synthReferences.map(ref => ({ synthId: ref.synthId, isCustom: ref.isCustom, name: ref.metadata.name })));
-
         // Create team with synths in one operation
         const { createTeamWithSynths } = await import('@/lib/database');
         const savedTeam = await createTeamWithSynths(user.id, teamData, synthReferences);
         
-        console.log('✅ Team with synths saved to Supabase successfully:', savedTeam.id);
-        
         // Trigger image generation immediately with the saved team data
-        console.log('🎨 Starting image generation with real Supabase IDs...');
         import('@/lib/api-utils').then(({ generateTeamImage, generateSynthImage }) => {
           // Generate team image using the saved team data directly
           const teamDataForImage = {
@@ -936,23 +891,27 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
             members: newSynths // Use the original synth data
           };
           
-          console.log('🎨 Generating team image for:', teamData.name, 'with keywords:', originalKeywords);
-          generateTeamImage(teamDataForImage).then((teamImageUrl: string) => {
-            console.log('✅ Team image generated with real ID:', teamImageUrl.substring(0, 50) + '...');
-            // Update via the teams hook
-            updateSupabaseTeam(savedTeam.id, {
-              name: teamData.name,
-              description: teamData.description,
-              teamImage: teamImageUrl,
-              teamType: 'custom',
-              metadata: {}
-            });
-          }).catch(error => console.error('❌ Team image generation failed:', error));
+                      generateTeamImage(teamDataForImage).then((teamImageUrl: string) => {
+              // Update via the teams hook
+              updateSupabaseTeam(savedTeam.id, {
+                name: teamData.name,
+                description: teamData.description,
+                teamImage: teamImageUrl,
+                teamType: 'custom',
+                metadata: {}
+              });
+            }).catch(error => console.error('❌ Team image generation failed:', error));
           
           // Generate synth images for new synths only (not existing ones)
-          for (const synth of newSynths) {
+          // Add delays between requests to ensure unique processing
+          for (let i = 0; i < newSynths.length; i++) {
+            const synth = newSynths[i];
             // Use the real ID if we have it, otherwise use the original ID
             const realSynthId = savedSynthIdMap.get(synth.id) || synth.id;
+            
+            // Create unique keywords for each synth to ensure unique images
+            // Use their specific role, bio, and name instead of generic team keywords
+            const uniqueKeywords = `${synth.role}, ${synth.bio || synth.name}, ${synth.age} years old`.toLowerCase();
             
             const memberDataForImage = {
               name: synth.name,
@@ -962,36 +921,34 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               systemPrompt: synth.systemPrompt,
               baseModel: synth.baseModel,
               profileImage: synth.profileImage,
-              keywords: originalKeywords
+              keywords: uniqueKeywords
             };
             
-            console.log('🎨 Generating synth image for:', synth.name, 'with keywords:', originalKeywords);
-            generateSynthImage(memberDataForImage).then((synthImageUrl: string) => {
-              console.log('✅ Synth image generated with real ID:', synth.name, synthImageUrl.substring(0, 50) + '...');
-              // Update via the synths hook using the real ID
-              updateSynth(realSynthId, {
-                name: synth.name,
-                role: synth.role,
-                age: synth.age,
-                profileImage: synthImageUrl,
-                bio: synth.bio,
-                experience: synth.experience,
-                systemPrompt: synth.systemPrompt,
-                baseModel: synth.baseModel,
-                metadata: {}
-              });
-            }).catch(error => console.error('❌ Synth image generation failed for', synth.name, ':', error));
+            // Add a small delay between requests to ensure unique processing
+            setTimeout(() => {
+              generateSynthImage(memberDataForImage).then((synthImageUrl: string) => {
+                // Update via the synths hook using the real ID
+                updateSynth(realSynthId, {
+                  name: synth.name,
+                  role: synth.role,
+                  age: synth.age,
+                  profileImage: synthImageUrl,
+                  bio: synth.bio,
+                  experience: synth.experience,
+                  systemPrompt: synth.systemPrompt,
+                  baseModel: synth.baseModel,
+                  metadata: {}
+                });
+              }).catch(error => console.error('❌ Synth image generation failed for', synth.name, ':', error));
+            }, i * 1000); // 1 second delay between each request
           }
         });
         
         // Refetch teams to update the UI
-        console.log('🔄 Refetching teams to update UI...');
         refetchSupabaseTeams();
       } catch (error) {
         console.error('❌ Failed to save team to Supabase:', error);
       }
-    } else {
-      console.log('📝 User not authenticated - team cannot be saved');
     }
 
     // Update the team with real synth IDs in local state (handled by parent component)
@@ -1114,13 +1071,10 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
 
     // If no active thread exists, automatically create a new thread
     if (!activeThreadId) {
-      console.log('DEBUG - Creating new thread for synth:', employee.name);
-      
       // Create a proper thread in the database if user is authenticated
       if (user) {
         try {
           const newThread = await directService.createThread(`Chat with ${employee.name}`);
-          console.log('DEBUG - Created new thread:', newThread);
           setActiveThreadId(newThread.id);
           setMessages([]); // Clear messages when creating new thread
           
@@ -1154,7 +1108,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           };
           
           await addSynthToThread(newThread.id, employeeId, synthReference);
-          console.log('✅ Synth added to new thread:', employee.name);
         } catch (error) {
           console.error('❌ Failed to create thread or add synth:', error);
           // Fallback to local state only
@@ -1252,8 +1205,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
             }
           };
           
-          console.log('🔍 Adding synth to thread with ID:', employeeId, 'isCustom:', isCustomSynth);
-
           // If this is a custom synth with updated prompt/model, also update the synth data
           if (isCustomSynth) {
             const existingCustomSynth = customSynths.find(synth => synth.id === employeeId);
@@ -1269,7 +1220,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               
               try {
                 await updateSynth(employeeId, updatedSynthData);
-                console.log('✅ Custom synth updated with new prompt/model before adding to thread:', employeeId);
               } catch (updateError) {
                 console.error('❌ Error updating custom synth with new prompt/model:', updateError);
               }
@@ -1278,10 +1228,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           
           // Use addSynthToThread instead of addSynthToTeam for threads
           await addSynthToThread(threadIdToUse, employeeId, synthReference);
-          console.log('✅ Synth added to thread in database:', employee.name);
           
           // Immediately refetch thread synths to update the store
-          console.log('🔄 Refetching thread synths after adding single synth');
           refetchThreadSynths();
         } catch (error) {
           console.error('❌ Failed to add synth to thread in database:', error);
@@ -1391,7 +1339,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           });
           
           if (synthsToAdd.length === 0) {
-            console.log('✅ All synths are already in the thread, skipping database operations');
             return;
           }
           
@@ -1406,10 +1353,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
                 try {
                   const parsed = JSON.parse(synth.id);
                   synthId = parsed.synthId || parsed.id || synth.id;
-                  console.log('🔍 Parsed JSON string ID to:', synthId);
                 } catch (e) {
                   // If parsing fails, use the original string
-                  console.log('🔍 Failed to parse JSON string ID, using original:', synth.id);
                   synthId = synth.id;
                 }
               } else {
@@ -1419,7 +1364,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               // Handle case where ID is already an object
               const objId = synth.id as any;
               synthId = objId.synthId || objId.id || String(synth.id);
-              console.log('🔍 Extracted ID from object:', synthId);
             } else {
               // Skip this synth if ID can't be determined
               console.error('❌ Could not determine valid synth ID:', synth);
@@ -1431,7 +1375,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               console.error('❌ Invalid UUID format:', synthId);
               // Try to clean up the ID - remove quotes, braces, etc.
               synthId = synthId.replace(/['"{}]/g, '');
-              console.log('🔍 Cleaned up ID:', synthId);
             }
             
             // Check if this is a custom synth
@@ -1454,10 +1397,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
                       // Add synth to thread in the database
           await addSynthToThread(activeThreadId, synthId, synthReference);
         }
-        console.log('✅ Multiple synths added to thread in database:', synthsToAdd.map((s: AIEmployee) => s.name));
         
         // Immediately refetch thread synths to update the store
-        console.log('🔄 Refetching thread synths after adding multiple synths');
         refetchThreadSynths();
         } catch (error) {
           console.error('❌ Failed to add synths to thread in database:', error);
@@ -1556,12 +1497,10 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   // Enhanced handleSendMessage using directService for proper streaming
   const handleSendMessage = React.useCallback(async (messageData: { display: string; full: string } | string, attachedImage?: any) => {
     if (teamMembers.length === 0) {
-      console.log('🚨 [HANDLER DEBUG] No team members, returning early');
       return;
     }
 
     if (!activeThreadId) {
-      console.log('🚨 [HANDLER DEBUG] No active thread, returning early');
       return;
     }
 
@@ -1572,12 +1511,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     }
     
     // Handle both old string format and new object format for backward compatibility
-    const displayContent = typeof messageData === 'string' ? messageData : messageData.display;
     const fullContent = typeof messageData === 'string' ? messageData : messageData.full;
-    
-    console.log('🚨 [HANDLER DEBUG] Using directService for message sending');
-    console.log('🚨 [HANDLER DEBUG] Display content:', displayContent.substring(0, 100) + '...');
-    console.log('🚨 [HANDLER DEBUG] Full content:', fullContent.substring(0, 100) + '...');
     
     // Use directService to handle the message - this will use proper streaming
     try {
@@ -1586,24 +1520,15 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         sender: 'user',
         ...(attachedImage && { image: attachedImage })
       });
-      console.log('✅ [HANDLER DEBUG] Message sent via directService');
     } catch (error) {
-      console.error('❌ [HANDLER DEBUG] Failed to send message via directService:', error);
+      console.error('❌ Failed to send message via directService:', error);
     }
   }, [teamMembers, isApiKeyValid, activeThreadId]);
 
   // Handle AI continuation (spacebar trigger) - WORKING VERSION
   const handleAIContinue = React.useCallback(async () => {
-    console.log('🚀 [AI CONTINUE DEBUG] handleAIContinue called');
-    console.log('🚀 [AI CONTINUE DEBUG] teamMembers.length:', teamMembers.length);
-    console.log('🚀 [AI CONTINUE DEBUG] threadTeamMembers.length:', threadTeamMembers.length);
-    console.log('🚀 [AI CONTINUE DEBUG] threadSynths.length:', threadSynths.length);
-    console.log('🚀 [AI CONTINUE DEBUG] isApiKeyValid:', isApiKeyValid);
-    console.log('🚀 [AI CONTINUE DEBUG] activeThreadId:', activeThreadId);
-    
     // Use threadSynths (the actual synths in the current thread) instead of teamMembers
     if (threadSynths.length === 0) {
-      console.log('🚀 [AI CONTINUE DEBUG] No thread synths, returning early');
       return;
     }
 
@@ -1613,22 +1538,16 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       return;
     }
     
-    console.log('🚀 [AI CONTINUE DEBUG] API key validation passed, proceeding with AI continuation');
-    
     // Use directService to handle AI continuation - this will trigger all team members to respond
     try {
       if (activeThreadId) {
-        console.log('🚀 [AI CONTINUE DEBUG] Sending AI continuation message to thread:', activeThreadId);
         await directService.sendMessage(activeThreadId, {
           content: '[Continue the conversation - explore the topic further and share your thoughts among the team]',
           sender: 'user'
         });
-        console.log('✅ [AI CONTINUE DEBUG] AI continuation message sent via directService');
-      } else {
-        console.log('🚀 [AI CONTINUE DEBUG] No active thread for directService, skipping');
       }
     } catch (error) {
-      console.error('❌ [AI CONTINUE DEBUG] Failed to send AI continuation via directService:', error);
+      console.error('❌ Failed to send AI continuation via directService:', error);
     }
   }, [threadSynths, threadTeamMembers, teamMembers, isApiKeyValid, activeThreadId]);
 
@@ -1638,8 +1557,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   const handleSelectTeam = React.useCallback(async (teamId: string) => {
     // Switch to the new thread/chat
     try {
-      console.log('🔍 DEBUG: handleSelectTeam called with teamId:', teamId);
-      
       // Since we're using threads as "teams" in the UI, teamId is actually threadId
       await directService.setActiveThreadId(teamId);
       setActiveThreadId(teamId);
@@ -1655,7 +1572,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           setMessages(convertedMessages);
           
           // Explicitly trigger thread synths loading
-          console.log('🔍 DEBUG: Explicitly loading thread synths for:', teamId);
           refetchThreadSynths();
         } catch (error) {
           console.error('Failed to load thread messages:', error);
@@ -1669,8 +1585,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           setMessages(selectedThread.messages);
         }
       }
-      
-      console.log('✅ Switched to thread:', teamId);
     } catch (error) {
       console.error('Failed to switch thread:', error);
     }
@@ -1690,7 +1604,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     if (user) {
       try {
         await directService.updateThread(teamId, { title: newName });
-        console.log('✅ Thread name updated in Supabase:', teamId, newName);
       } catch (error) {
         console.error('❌ Failed to update thread name in Supabase:', error);
         // Could add user notification here if needed
@@ -1733,9 +1646,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         
         // Also update Supabase active thread via directService
         await directService.setActiveThreadId(realThread.id);
-        
-        console.log('✅ Thread created in Supabase with real ID:', realThread.id);
-        console.log('💬 New chat thread created (empty - no synths copied)');
       } catch (error) {
         console.error('❌ Failed to create thread in Supabase:', error);
         
@@ -1762,14 +1672,11 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         setMessages([]);
         
         await switchThread(optimisticThreadId);
-        
-        console.log('⚠️ Using optimistic thread due to Supabase error:', optimisticThreadId);
       }
     } else {
       // For unauthenticated users, just clear messages locally
       setTeamMembers([]); // Clear team members for new thread
       setMessages([]);
-      console.log('💬 Created new local chat (empty - no synths copied)');
     }
   }, [user, teamMembers, teams.length, isWaitingForStream, saveThreadsCache, customSynths, addSynthToThread]);
 
@@ -1777,7 +1684,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
 
   const handleClearChat = React.useCallback(async () => {
     if (!activeThreadId) {
-      console.log('No active thread to clear');
       return;
     }
 
@@ -1790,11 +1696,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       const messageIds = state.relationships.threadMessages[activeThreadId] || [];
       
       if (messageIds.length === 0) {
-        console.log('No messages to clear in thread:', activeThreadId);
         return;
       }
-
-      console.log(`🗑️ Clearing ${messageIds.length} messages from thread:`, activeThreadId);
 
       // Delete all messages from the database and store
       const deletePromises = messageIds.map(messageId => 
@@ -1812,8 +1715,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           ? { ...team, messages: [] }
           : team
       ));
-
-      console.log('✅ Successfully cleared all messages from thread:', activeThreadId);
     } catch (error) {
       console.error('❌ Failed to clear chat messages:', error);
       // Still clear the UI even if database deletion fails
@@ -1876,7 +1777,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     if (user) {
       try {
         await directService.deleteThread(teamId);
-        console.log('✅ Thread deleted from Supabase:', teamId);
       } catch (error) {
         console.error('❌ Failed to delete thread from Supabase:', error);
         // Could add user notification here if needed
@@ -1918,11 +1818,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       
       // Handle spacebar for AI continuation (global, even when not typing)
       if (event.key === ' ' && !isTyping && teamMembers.length > 0 && !isWaitingForStream) {
-        console.log('🚀 [SPACEBAR DEBUG] Spacebar pressed for AI continuation');
-        console.log('🚀 [SPACEBAR DEBUG] isTyping:', isTyping);
-        console.log('🚀 [SPACEBAR DEBUG] teamMembers.length:', teamMembers.length);
-        console.log('🚀 [SPACEBAR DEBUG] isWaitingForStream:', isWaitingForStream);
-        
         event.preventDefault();
         
         const now = Date.now();
@@ -1934,7 +1829,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         }
         setLastGlobalSpacebarPress(now);
         
-        console.log('🚀 [SPACEBAR DEBUG] Calling handleAIContinue...');
         handleAIContinue();
         return;
       }

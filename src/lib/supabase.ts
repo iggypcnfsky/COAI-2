@@ -313,6 +313,22 @@ export type Database = {
           message_data?: any
         }
       }
+      'coai-documents': {
+        Row: {
+          id: string
+          user_id: string
+          document_data: any
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          document_data?: any
+        }
+        Update: {
+          document_data?: any
+        }
+      }
     }
   }
 }
