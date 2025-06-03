@@ -93,10 +93,10 @@ const ChatSection: React.FC<ChatSectionProps> = ({
   const { 
     isSending,
     isLoading: isMessagesLoading,
-    sendUserMessage,
+    sendMessage: sendUserMessage,
     deleteMessage,
-    streamAiMessage,
-    fetchMessages,
+    startMessageStream: streamAiMessage,
+    loadInitialMessages: fetchMessages,
   } = useMessages(activeThreadId || undefined);
 
 
@@ -108,7 +108,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
   useEffect(() => {
     if (shouldRefreshMessages && activeThreadId) {
       console.log('🔄 [DEBUG] Detected refreshMessages flag, refreshing messages');
-      fetchMessages(activeThreadId).catch(error => {
+      fetchMessages().catch(error => {
         console.error('❌ [DEBUG] Error refreshing messages:', error);
       });
     }
@@ -145,7 +145,10 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     
     if (activeThreadId) {
       console.log('✅ [DEBUG] Using existing thread:', activeThreadId);
-      await sendUserMessage(messageData.full);
+      await sendUserMessage({
+        content: messageData.full,
+        sender: 'user'
+      });
     } else {
       console.log('⚠️ [DEBUG] No active thread, creating one...');
       

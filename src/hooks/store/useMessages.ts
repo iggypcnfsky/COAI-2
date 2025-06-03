@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { COAIMessage, COAIMessageData } from '../../types';
+import { COAIMessageData } from '../../types';
 
 import { useThreads } from './useThreads';
 import { RootState } from '../../types/store';
@@ -9,6 +9,28 @@ import { RootState } from '../../types/store';
  * Hook for interacting with messages in the application
  */
 export function useMessages(threadId?: string) {
+  // Check if store is initialized to prevent null errors
+  const storeExists = useAppStore.getState !== undefined;
+  
+  if (!storeExists) {
+    // Return safe defaults if store is not initialized
+    return {
+      messages: [],
+      isLoading: false,
+      isSending: false,
+      hasMoreMessages: false,
+      loadMoreMessages: async () => {},
+      loadInitialMessages: async () => {},
+      sendMessage: async () => null,
+      updateMessage: async () => null,
+      deleteMessage: async () => {},
+      startMessageStream: () => '',
+      appendToMessageStream: () => {},
+      completeMessageStream: () => {},
+      cancelMessageStream: () => {},
+    };
+  }
+
   // Local state for pagination
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [oldestMessageDate, setOldestMessageDate] = useState<Date | null>(null);
@@ -32,7 +54,6 @@ export function useMessages(threadId?: string) {
   
   // Get actions from store (these don't change so no need to memoize)
   const fetchMessages = useAppStore((state) => state.fetchMessages);
-  const getMessage = useAppStore((state) => state.getMessage);
   const sendMessage = useAppStore((state) => state.sendMessage);
   const updateMessage = useAppStore((state) => state.updateMessage);
   const deleteMessage = useAppStore((state) => state.deleteMessage);
@@ -76,15 +97,17 @@ export function useMessages(threadId?: string) {
   
   // Function to load more messages (pagination)
   const loadMoreMessages = useCallback(async () => {
-    if (!effectiveThreadId || !hasMoreMessages || !oldestMessageDate) return;
+    if (!effectiveThreadId || !hasMoreMessages || isLoading || !oldestMessageDate) {
+      return;
+    }
     
     try {
-      const messagesList = await fetchMessages(effectiveThreadId, {
-        before: oldestMessageDate,
-        limit: 50
+      const messagesList = await fetchMessages(effectiveThreadId, { 
+        limit: 50, 
+        before: oldestMessageDate 
       });
       
-      // Update oldest message date for pagination
+      // Update oldest message date for next pagination
       if (messagesList.length > 0) {
         const dates = messagesList.map(msg => new Date(msg.created_at));
         const oldest = new Date(Math.min(...dates.map(d => d.getTime())));
@@ -98,117 +121,120 @@ export function useMessages(threadId?: string) {
       console.error('Error loading more messages:', error);
       setHasMoreMessages(false);
     }
-  }, [effectiveThreadId, fetchMessages, hasMoreMessages, oldestMessageDate]);
+  }, [effectiveThreadId, hasMoreMessages, isLoading, oldestMessageDate, fetchMessages]);
   
-  // Get thread messages list - with stable reference
+  // Get messages for the current thread
   const threadMessages = useMemo(() => {
-    if (!threadMessagesRelationships || !Array.isArray(threadMessagesRelationships) || threadMessagesRelationships.length === 0) {
+    if (!effectiveThreadId || !threadMessagesRelationships || !messages) {
       return [];
     }
     
-    return threadMessagesRelationships
-      .map((id: string) => messages[id])
+    const messageIds = threadMessagesRelationships;
+    if (!messageIds) return [];
+    
+    return messageIds
+      .map((id) => messages[id])
       .filter(Boolean)
-      .sort((a: COAIMessage, b: COAIMessage) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  }, [messages, threadMessagesRelationships]);
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  }, [effectiveThreadId, threadMessagesRelationships, messages]);
   
-  // Helper to send a user message to the thread
-  const sendUserMessage = useCallback(
-    async (content: string) => {
-      if (!effectiveThreadId) {
-        throw new Error('No active thread');
-      }
-      
-      const messageData: COAIMessageData = {
-        content,
-        sender: 'user'
-      };
-      
-      try {
-        const result = await sendMessage(effectiveThreadId, messageData);
-        return result;
-      } catch (error) {
-        throw error;
-      }
-    },
-    [effectiveThreadId, sendMessage]
-  );
+  // Send a message to the current thread
+  const sendMessageToThread = useCallback(async (messageData: COAIMessageData) => {
+    if (!effectiveThreadId) {
+      throw new Error('No active thread');
+    }
+    
+    return await sendMessage(effectiveThreadId, messageData);
+  }, [effectiveThreadId, sendMessage]);
   
-  // Helper to send an AI message to the thread
-  const sendAiMessage = useCallback(
-    async (content: string, aiEmployee?: COAIMessageData['aiEmployee']) => {
-      if (!effectiveThreadId) throw new Error('No active thread');
-      
-      const messageData: COAIMessageData = {
-        content,
-        sender: 'ai',
-        aiEmployee
-      };
-      
-      return sendMessage(effectiveThreadId, messageData);
-    },
-    [effectiveThreadId, sendMessage]
-  );
+  // Update a message
+  const updateMessageInThread = useCallback(async (messageId: string, updates: Partial<COAIMessageData>) => {
+    return await updateMessage(messageId, updates);
+  }, [updateMessage]);
   
-  // Helper to start streaming an AI message
-  const streamAiMessage = useCallback(
-    async (initialContent: string, aiEmployee?: COAIMessageData['aiEmployee']) => {
-      if (!effectiveThreadId) throw new Error('No active thread');
-      
-      return startMessageStream(effectiveThreadId, initialContent, aiEmployee);
-    },
-    [effectiveThreadId, startMessageStream]
-  );
+  // Delete a message
+  const deleteMessageFromThread = useCallback(async (messageId: string) => {
+    await deleteMessage(messageId);
+  }, [deleteMessage]);
   
-  // Create a stable reference to the return object
-  return useMemo(() => ({
-    // State
+  // Start a streaming message
+  const startStreamingMessage = useCallback((initialContent: string, aiEmployee?: COAIMessageData['aiEmployee']) => {
+    if (!effectiveThreadId) {
+      throw new Error('No active thread');
+    }
+    
+    return startMessageStream(effectiveThreadId, initialContent, aiEmployee);
+  }, [effectiveThreadId, startMessageStream]);
+  
+  // Append to streaming message
+  const appendToStream = useCallback((messageId: string, content: string) => {
+    appendToMessageStream(messageId, content);
+  }, [appendToMessageStream]);
+  
+  // Complete streaming message
+  const completeStream = useCallback((messageId: string) => {
+    completeMessageStream(messageId);
+  }, [completeMessageStream]);
+  
+  // Cancel streaming message
+  const cancelStream = useCallback((messageId: string) => {
+    cancelMessageStream(messageId);
+  }, [cancelMessageStream]);
+  
+  return {
+    // Data
     messages: threadMessages,
-    hasMoreMessages,
     isLoading,
     isSending,
-    
-    // Message actions
-    fetchMessages,
-    loadMoreMessages,
-    getMessage,
-    sendMessage,
-    sendUserMessage,
-    sendAiMessage,
-    updateMessage,
-    deleteMessage,
-    
-    // Streaming support
-    startMessageStream,
-    streamAiMessage,
-    appendToMessageStream,
-    completeMessageStream,
-    cancelMessageStream,
-  }), [
-    threadMessages,
     hasMoreMessages,
-    isLoading,
-    isSending,
-    fetchMessages,
+    
+    // Actions
     loadMoreMessages,
-    getMessage,
-    sendMessage,
-    sendUserMessage,
-    sendAiMessage,
-    updateMessage,
-    deleteMessage,
-    startMessageStream,
-    streamAiMessage,
-    appendToMessageStream,
-    completeMessageStream,
-    cancelMessageStream
-  ]);
+    loadInitialMessages,
+    sendMessage: sendMessageToThread,
+    updateMessage: updateMessageInThread,
+    deleteMessage: deleteMessageFromThread,
+    
+    // Streaming actions
+    startMessageStream: startStreamingMessage,
+    appendToMessageStream: appendToStream,
+    completeMessageStream: completeStream,
+    cancelMessageStream: cancelStream,
+  };
 }
 
 /**
  * Hook for interacting with the message input state
  */
 export function useMessageInput() {
+  // Check if store is initialized to prevent null errors
+  const storeExists = useAppStore.getState !== undefined;
+  
+  if (!storeExists) {
+    // Return safe defaults if store is not initialized
+    return {
+      text: '',
+      cursorPosition: 0,
+      isTriggeringAI: false,
+      attachedImage: null,
+      isDragOver: false,
+      messageHistory: [],
+      historyIndex: -1,
+      selectedMentionIndex: 0,
+      setText: () => {},
+      setCursorPosition: () => {},
+      setIsTriggeringAI: () => {},
+      setAttachedImage: () => {},
+      setIsDragOver: () => {},
+      setMessageHistory: () => {},
+      setHistoryIndex: () => {},
+      setSelectedMentionIndex: () => {},
+      clearInput: () => {},
+      addToHistory: () => {},
+      navigateHistory: () => {},
+    };
+  }
+
   // Select state from the store
   const text = useAppStore((state) => state.ui?.messageInput?.text || '');
   const cursorPosition = useAppStore((state) => state.ui?.messageInput?.cursorPosition || 0);
@@ -229,17 +255,52 @@ export function useMessageInput() {
   const setHistoryIndex = useAppStore((state) => state.setMessageInputHistoryIndex);
   
   // Wrapping the function to ensure it accepts both number and updater function
-  const setSelectedMentionIndex = useAppStore((state) => state.setMessageInputSelectedMentionIndex);
-  const wrappedSetSelectedMentionIndex = useCallback((value: number | ((prev: number) => number)) => {
+  const setSelectedMentionIndexStore = useAppStore((state) => state.setMessageInputSelectedMentionIndex);
+  
+  const setSelectedMentionIndex = useCallback((value: number | ((prev: number) => number)) => {
     if (typeof value === 'function') {
       const updater = value as (prev: number) => number;
-      setSelectedMentionIndex(updater(selectedMentionIndex));
+      setSelectedMentionIndexStore(updater(selectedMentionIndex));
     } else {
-      setSelectedMentionIndex(value);
+      setSelectedMentionIndexStore(value);
     }
-  }, [selectedMentionIndex, setSelectedMentionIndex]);
+  }, [selectedMentionIndex, setSelectedMentionIndexStore]);
   
-  const resetMessageInput = useAppStore((state) => state.resetMessageInput);
+  // Helper functions
+  const clearInput = useCallback(() => {
+    setMessageInputText('');
+    setCursorPosition(0);
+    setAttachedImage(null);
+    setIsTriggeringAI(false);
+  }, [setMessageInputText, setCursorPosition, setAttachedImage, setIsTriggeringAI]);
+  
+  const addToHistory = useCallback((message: string) => {
+    if (message.trim()) {
+      const newHistory = [message, ...messageHistory.filter(h => h !== message)].slice(0, 50);
+      setMessageHistory(newHistory);
+      setHistoryIndex(-1);
+    }
+  }, [messageHistory, setMessageHistory, setHistoryIndex]);
+  
+  const navigateHistory = useCallback((direction: 'up' | 'down') => {
+    if (messageHistory.length === 0) return;
+    
+    let newIndex = historyIndex;
+    
+    if (direction === 'up') {
+      newIndex = Math.min(historyIndex + 1, messageHistory.length - 1);
+    } else {
+      newIndex = Math.max(historyIndex - 1, -1);
+    }
+    
+    setHistoryIndex(newIndex);
+    
+    if (newIndex === -1) {
+      setMessageInputText('');
+    } else {
+      setMessageInputText(messageHistory[newIndex]);
+    }
+  }, [historyIndex, messageHistory, setHistoryIndex, setMessageInputText]);
   
   return {
     // State
@@ -254,13 +315,17 @@ export function useMessageInput() {
     
     // Actions
     setText: setMessageInputText,
-    setCursorPosition: setCursorPosition,
+    setCursorPosition,
     setIsTriggeringAI,
     setAttachedImage,
     setIsDragOver,
     setMessageHistory,
     setHistoryIndex,
-    setSelectedMentionIndex: wrappedSetSelectedMentionIndex,
-    resetMessageInput,
+    setSelectedMentionIndex,
+    
+    // Helper functions
+    clearInput,
+    addToHistory,
+    navigateHistory,
   };
 } 

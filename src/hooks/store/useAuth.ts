@@ -25,6 +25,25 @@ export interface AuthHookResult {
 export function useAuth(): AuthHookResult {
   const [loading, setLoading] = useState(true);
   
+  // Check if store is initialized to prevent null errors
+  const storeExists = useAppStore.getState !== undefined;
+  
+  if (!storeExists) {
+    // Return safe defaults if store is not initialized
+    return {
+      session: null,
+      user: null,
+      profile: null,
+      loading: true,
+      signIn: async () => ({ error: new Error('Store not initialized') }),
+      signInWithGoogle: async () => ({ error: new Error('Store not initialized') }),
+      signUp: async () => ({ error: new Error('Store not initialized') }),
+      signOut: async () => ({ error: new Error('Store not initialized') }),
+      updateProfile: async () => ({ error: new Error('Store not initialized') }),
+      refreshProfile: async () => {},
+    };
+  }
+  
   // Select state from store
   const session = useAppStore((state) => state.session);
   const user = useAppStore((state) => state.user);

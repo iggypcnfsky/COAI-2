@@ -13,6 +13,18 @@ export interface ApiKeyHookResult {
  * This provides a drop-in replacement for the existing apiKeyContext
  */
 export function useApiKey(): ApiKeyHookResult {
+  // Check if store is initialized to prevent null errors
+  const storeExists = useAppStore.getState !== undefined;
+  
+  if (!storeExists) {
+    // Return safe defaults if store is not initialized
+    return {
+      openaiApiKey: '',
+      setOpenaiApiKey: () => {},
+      isApiKeyValid: false,
+    };
+  }
+
   // Get API key from store
   const tempApiKeys = useAppStore((state) => state.tempApiKeys);
   const setTempApiKey = useAppStore((state) => state.setTempApiKey);

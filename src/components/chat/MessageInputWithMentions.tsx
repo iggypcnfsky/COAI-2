@@ -9,6 +9,7 @@ import { useMentions } from '@/hooks/useMentions';
 import MentionBadge from './MentionBadge';
 import FileMentionBadge from './FileMentionBadge';
 import { useMessageInput } from '@/hooks/store';
+import { useAppStore } from '@/stores/appStore';
 
 interface Document {
   id: string;
@@ -43,6 +44,24 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
 }) => {
   console.log('🚨 [COMPONENT MOUNT DEBUG] MessageInputWithMentions mounted with onSetDocumentMentionHandler:', !!onSetDocumentMentionHandler);
   
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Filter employees to only include current team members
+  const teamEmployees = useMemo(() => {
+    return employees.filter(employee => 
+      teamMembers.some(member => member.id === employee.id)
+    );
+  }, [employees, teamMembers]);
+
+  // Always call hooks in the same order - check store initialization first
+  let storeExists = true;
+  try {
+    useAppStore.getState();
+  } catch (error) {
+    storeExists = false;
+  }
+  
   // Use message input hook for state management
   const {
     text: message,
@@ -62,17 +81,6 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
     setHistoryIndex,
     setSelectedMentionIndex
   } = useMessageInput();
-  
-
-  
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  // Filter employees to only include current team members
-  const teamEmployees = useMemo(() => {
-    return employees.filter(employee => 
-      teamMembers.some(member => member.id === employee.id)
-    );
-  }, [employees, teamMembers]);
 
   const {
     isShowingMentions,
@@ -83,6 +91,17 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
     setIsShowingMentions,
     clearCompletedMentions
   } = useMentions({ employees: teamEmployees });
+  
+  // If store is not initialized, render a loading state
+  if (!storeExists) {
+    return (
+      <div className="p-4 border-t border-neutral-200 dark:border-neutral-800">
+        <div className="flex items-center justify-center">
+          <div className="text-neutral-500 dark:text-neutral-400">Loading...</div>
+        </div>
+      </div>
+    );
+  }
   
   // Create a display version of the message without document context for the textarea
   const displayMessage = useMemo(() => {

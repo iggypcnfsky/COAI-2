@@ -6,10 +6,32 @@ import { COAISynthData } from '../../types';
  * Hook to access and manage synths
  */
 export function useSynths() {
+  // Check if store is initialized to prevent null errors
+  const storeExists = useAppStore.getState !== undefined;
+  
+  if (!storeExists) {
+    // Return safe defaults if store is not initialized
+    return {
+      synths: [],
+      selectedSynth: null,
+      isLoading: false,
+      getSynth: async () => null,
+      createSynth: async () => null,
+      updateSynth: async () => null,
+      deleteSynth: async () => null,
+      selectSynth: () => {},
+      refreshSynths: () => {},
+    };
+  }
+
   // Access the store directly for synths data and actions
   const synths = useAppStore((state) => state.entities.synths);
   const selectedSynthId = useAppStore((state) => state.ui.selectedSynthId);
   const isLoading = useAppStore((state) => state.ui.loadingStates.fetchSynths);
+  
+  // Get authentication state to trigger re-fetch when user logs in
+  const session = useAppStore((state) => state.session);
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
   
   // Get actions from store
   const fetchSynths = useAppStore((state) => state.fetchSynths);
@@ -23,6 +45,12 @@ export function useSynths() {
   useEffect(() => {
     fetchSynths();
   }, [fetchSynths]);
+  
+  // Re-fetch synths when authentication state changes (user logs in/out)
+  useEffect(() => {
+    console.log('🔍 [SYNTHS DEBUG] Authentication state changed, re-fetching synths. isAuthenticated:', isAuthenticated, 'userId:', session?.user?.id);
+    fetchSynths();
+  }, [isAuthenticated, session?.user?.id, fetchSynths]);
   
   // Get synth by ID (with caching)
   const getSynthById = useCallback(async (id: string) => {

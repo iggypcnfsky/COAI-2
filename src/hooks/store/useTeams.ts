@@ -7,6 +7,35 @@ import { denormalizeRecord } from '../../lib/utils/normalization';
  * Hook for interacting with teams in the application
  */
 export function useTeams() {
+  // Check if store is initialized to prevent null errors
+  const storeExists = useAppStore.getState !== undefined;
+  
+  if (!storeExists) {
+    // Return safe defaults if store is not initialized
+    return {
+      teams: [],
+      activeTeam: null,
+      activeTeamId: null,
+      selectedSynthId: null,
+      activeSynths: [],
+      isLoading: false,
+      fetchTeams: () => {},
+      getTeam: async () => null,
+      createTeam: async () => null,
+      updateTeam: async () => null,
+      deleteTeam: async () => null,
+      selectTeam: () => {},
+      addSynthToTeam: async () => {},
+      removeSynthFromTeam: async () => {},
+      getTeamSynths: () => [],
+      updateTeamSynthReference: async () => {},
+      getTeamSynthsList: () => [],
+      addSynthToActiveTeam: async () => {},
+      removeSynthFromActiveTeam: async () => {},
+      isSynthInActiveTeam: () => false,
+    };
+  }
+
   // Select state from the store
   const teams = useAppStore((state) => state.entities.teams);
   const activeTeamId = useAppStore((state) => state.ui.activeTeamId);
@@ -14,6 +43,10 @@ export function useTeams() {
   const teamSynthsRelationships = useAppStore((state) => state.relationships.teamSynths);
   const synths = useAppStore((state) => state.entities.synths);
   const isLoading = useAppStore((state) => state.ui.loadingStates.fetchTeams);
+  
+  // Get authentication state to trigger re-fetch when user logs in
+  const session = useAppStore((state) => state.session);
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
   
   // Select actions from the store
   const fetchTeams = useAppStore((state) => state.fetchTeams);
@@ -31,6 +64,12 @@ export function useTeams() {
   useEffect(() => {
     fetchTeams();
   }, [fetchTeams]);
+  
+  // Re-fetch teams when authentication state changes (user logs in/out)
+  useEffect(() => {
+    console.log('🔍 [TEAMS DEBUG] Authentication state changed, re-fetching teams. isAuthenticated:', isAuthenticated, 'userId:', session?.user?.id);
+    fetchTeams();
+  }, [isAuthenticated, session?.user?.id, fetchTeams]);
   
   // Convert normalized teams to array
   const teamsList = useMemo(() => {
@@ -93,6 +132,12 @@ export function useTeams() {
     [activeTeamId, teamSynthsRelationships]
   );
   
+  // Get synths for a specific team
+  const getTeamSynthsList = useCallback((teamId: string) => {
+    const synthIds = teamSynthsRelationships[teamId] || [];
+    return synthIds.map(id => synths[id]).filter(Boolean);
+  }, [teamSynthsRelationships, synths]);
+  
   return {
     // State
     teams: teamsList,
@@ -115,6 +160,7 @@ export function useTeams() {
     removeSynthFromTeam,
     getTeamSynths,
     updateTeamSynthReference,
+    getTeamSynthsList,
     
     // Helper methods
     addSynthToActiveTeam,
