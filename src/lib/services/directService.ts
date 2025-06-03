@@ -533,6 +533,49 @@ class DirectService implements IDataService {
   }
 
   /**
+   * Build conversation context with speaker information for system prompt
+   */
+  private buildConversationContext(threadMessages: COAIMessage[], chatHistory?: any[], currentMemberIndex?: number): string {
+    if (threadMessages.length === 0 && (!chatHistory || chatHistory.length === 0)) return '';
+    
+    // Get recent AI messages with speaker info from stored messages
+    const recentAIMessages = threadMessages
+      .filter(msg => msg.message_data.sender === 'ai' && msg.message_data.aiEmployee?.name)
+      .slice(-5) // Last 5 AI messages
+      .map(msg => {
+        const speakerName = msg.message_data.aiEmployee?.name || 'Unknown';
+        const content = (msg.message_data.content || '').substring(0, 200); // Truncate for context
+        return `${speakerName} said: "${content}${content.length > 200 ? '...' : ''}"`;
+      });
+    
+    // Add responses from current conversation turn (from other AIs who have already responded)
+    const currentTurnResponses: string[] = [];
+    if (chatHistory && currentMemberIndex !== undefined && currentMemberIndex > 0) {
+      // Look at the chat history to find responses from this turn
+      // The user message is at the end, so AI responses from this turn would be after the last user message
+      const lastUserMessageIndex = chatHistory.map((msg, idx) => ({ msg, idx }))
+        .filter(item => item.msg.role === 'user')
+        .pop()?.idx || -1;
+      
+      if (lastUserMessageIndex >= 0) {
+        const responsesThisTurn = chatHistory.slice(lastUserMessageIndex + 1);
+        responsesThisTurn.forEach((response, idx) => {
+          if (response.role === 'assistant' && response.content) {
+            const content = response.content.substring(0, 200);
+            currentTurnResponses.push(`Teammate ${idx + 1} just said: "${content}${content.length > 200 ? '...' : ''}"`);
+          }
+        });
+      }
+    }
+    
+    const allContextMessages = [...recentAIMessages, ...currentTurnResponses];
+    
+    if (allContextMessages.length === 0) return '';
+    
+    return `\n\nTEAM CONVERSATION CONTEXT:\n${allContextMessages.join('\n')}\n\nIMPORTANT: Build on what your teammates have said and avoid repeating their points. Add your own unique perspective.`;
+  }
+
+  /**
    * Generate responses from team synths
    */
   private async generateTeamResponses(
@@ -544,14 +587,36 @@ class DirectService implements IDataService {
   ): Promise<void> {
     console.log(`🤖 Generating responses for ${teamSynths.length} synths in thread ${threadId}`);
     
-    const chatHistory = threadMessages.map(msg => ({
-      role: msg.message_data.sender === 'user' ? 'user' : 'assistant',
-      content: msg.message_data.content || ''
-    }));
+    let chatHistory = threadMessages.map(msg => {
+      const baseMessage = {
+        role: msg.message_data.sender === 'user' ? 'user' : 'assistant',
+        content: msg.message_data.content || ''
+      };
+      
+      // Don't modify the content - we'll add speaker info in the system prompt instead
+      return baseMessage;
+    });
     
     chatHistory.push({
       role: 'user',
       content: userMessage
+    });
+
+    // 🎯 CONTEXT WINDOW MANAGEMENT: Trim chat history to fit within token limits
+    const { trimMessagesToTokenLimit, getContextInfo } = await import('../../lib/utils/tokenUtils');
+    const originalChatHistory = [...chatHistory];
+    chatHistory = trimMessagesToTokenLimit(chatHistory, 40000, 2000);
+    
+    // 🔍 DEBUG: Log context window optimization in directService
+    const contextInfo = getContextInfo(originalChatHistory, 40000, 2000);
+    console.log(`🎯 [DIRECT SERVICE - CONTEXT WINDOW] Optimized chat history:`, {
+      originalMessages: contextInfo.originalMessageCount,
+      trimmedMessages: contextInfo.trimmedMessageCount,
+      messagesRemoved: contextInfo.messagesRemoved,
+      originalTokens: contextInfo.originalTokens,
+      trimmedTokens: contextInfo.trimmedTokens,
+      utilization: `${contextInfo.utilizationPercent}%`,
+      maxTokens: contextInfo.maxTokens
     });
     
     // Parse mentions
@@ -575,11 +640,68 @@ class DirectService implements IDataService {
       ? teamSynths.filter(ts => mentionedSynthIds.includes(ts.synthId))
       : teamSynths;
     
-    // Generate responses sequentially
-    for (const synthData of activeSynths) {
+    // Generate responses sequentially with delays to prevent identical responses
+    for (let i = 0; i < activeSynths.length; i++) {
+      const synthData = activeSynths[i];
+      
+      // Add delay between team member responses (except for the first one)
+      if (i > 0) {
+        const delay = Math.random() * (2000 - 500) + 500; // 500-2000ms random delay
+        console.log(`⏱️ Adding ${delay}ms delay before ${synthData.reference.metadata?.name} responds`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      
       try {
-        const systemPrompt = synthData.reference.metadata?.systemPrompt || 
+        // Add unique context to prevent identical responses and encourage collaboration
+        const timestamp = new Date().toISOString();
+        const memberPosition = `You are team member ${i + 1} of ${activeSynths.length}`;
+        
+        // CRITICAL: Instruction-following emphasis
+        const instructionFollowing = `CRITICAL DIRECTIVE: You MUST follow the user's EXACT instructions. If they say "one idea" - give ONLY one idea. If they say "be brief" - be brief. If they say "don't collaborate" - don't collaborate. DO NOT add extra content, multiple points, or elaborate beyond what they specifically requested. OBEY their instructions precisely. `;
+        
+        // Enhanced collaboration instructions (only when appropriate)
+        const collaborationContext = activeSynths.length > 1 ? 
+          `You are part of a ${activeSynths.length}-person team. HOWEVER: If the user's instructions specify a particular format or constraint (like "one idea" or "be brief"), prioritize following their instructions over collaboration. When collaborating IS appropriate:
+          1. Reference what your teammate said specifically (e.g., "Building on Jake's point about...")
+          2. Add ONE new, different detail they didn't cover
+          3. Keep responses focused and avoid repetition
+          
+          CRITICAL: If the user asks for "one idea" or similar constraints, respect that limit even in team responses. ` : '';
+        
+        // Add role-specific collaboration focus
+        const roleSpecificFocus = activeSynths.length > 1 ? 
+          `As team member ${i + 1}, focus on your unique expertise and perspective. Don't duplicate what others have said - complement it. ` : '';
+        
+        // Build conversation context with speaker information (including current turn responses)
+        const conversationContext = activeSynths.length > 1 ? this.buildConversationContext(threadMessages, chatHistory, i) : '';
+        
+        const uniqueContext = `[${timestamp}] ${instructionFollowing}${memberPosition}. ${collaborationContext}${roleSpecificFocus}`;
+        
+        const basePrompt = synthData.reference.metadata?.systemPrompt || 
           `You are ${synthData.reference.metadata?.name || 'an AI assistant'}. Respond according to your role.`;
+        
+        const systemPrompt = uniqueContext + basePrompt + conversationContext;
+        
+        console.log(`🔍 DEBUG: System prompt for ${synthData.reference.metadata?.name}:`, systemPrompt.substring(0, 500) + '...');
+        console.log(`🔍 DEBUG: Conversation context for ${synthData.reference.metadata?.name}:`, conversationContext);
+        
+        console.log(`🤖 Generating response for ${synthData.reference.metadata?.name} (${i + 1}/${activeSynths.length}) at ${timestamp}`);
+        
+        const requestBody = {
+          messages: chatHistory,
+          role: synthData.reference.metadata?.role || 'Assistant',
+          model: synthData.reference.metadata?.model || 'gpt-4',
+          employeePrompt: systemPrompt,
+          employeeName: synthData.reference.metadata?.name || 'AI',
+          openaiApiKey
+        };
+        
+        console.log(`🔍 DEBUG: Request body for ${synthData.reference.metadata?.name}:`, {
+          ...requestBody,
+          openaiApiKey: openaiApiKey ? `${openaiApiKey.substring(0, 10)}...` : 'MISSING',
+          messages: `${chatHistory.length} messages`,
+          employeePrompt: `${systemPrompt.length} chars`
+        });
         
         // Use the correct Supabase Edge Function call
         const response = await fetch(`https://hiuinnexazfqhodamhgk.supabase.co/functions/v1/chat`, {
@@ -588,15 +710,10 @@ class DirectService implements IDataService {
             'Content-Type': 'application/json',
             'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpdWlubmV4YXpmcWhvZGFtaGdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mjk1MzU3MDIsImV4cCI6MjA0NTExMTcwMn0.iLC9JDOaaGZbsMMwTOZOCfFDdvkVZIvKU41CFoaicx0`,
           },
-          body: JSON.stringify({
-            messages: chatHistory,
-            role: synthData.reference.metadata?.role || 'Assistant',
-            model: synthData.reference.metadata?.model || 'gpt-4',
-            employeePrompt: systemPrompt,
-            employeeName: synthData.reference.metadata?.name || 'AI',
-            openaiApiKey
-          }),
+          body: JSON.stringify(requestBody),
         });
+        
+        console.log(`🔍 DEBUG: Response status for ${synthData.reference.metadata?.name}:`, response.status, response.statusText);
         
         if (!response.ok) {
           let errorData = {};
@@ -650,25 +767,36 @@ class DirectService implements IDataService {
               
               for (const line of lines) {
                 if (line.startsWith('data: ')) {
-                  const data = line.slice(6); // Remove 'data: ' prefix
+                  const data = line.slice(5).trim(); // Remove 'data:' prefix and trim whitespace
                   
-                  if (data === '[DONE]') {
+                  console.log(`🔍 DEBUG: Processing SSE line for ${synthData.reference.metadata?.name}:`, data);
+                  
+                  if (data === '[DONE]' || data === 'DONE') {
                     console.log(`🔍 DEBUG: Received [DONE] signal for ${synthData.reference.metadata?.name}`);
                     break;
                   }
                   
+                  if (!data || data === '') {
+                    console.log(`🔍 DEBUG: Empty data line, skipping`);
+                    continue;
+                  }
+                  
                   try {
                     const parsed = JSON.parse(data);
-                    const content = parsed.choices?.[0]?.delta?.content;
+                    console.log(`🔍 DEBUG: Parsed JSON for ${synthData.reference.metadata?.name}:`, parsed);
+                    
+                    const content = parsed.choices?.[0]?.delta?.content || parsed.content;
                     if (content) {
                       fullContent += content;
                       console.log(`🔍 DEBUG: Added content for ${synthData.reference.metadata?.name}: "${content}"`);
                       
                       // Update the streaming message in real-time
                       state.appendToMessageStream(streamingMessageId, content);
+                    } else {
+                      console.log(`🔍 DEBUG: No content found in parsed data:`, parsed);
                     }
                   } catch (parseError) {
-                    console.log(`🔍 DEBUG: Failed to parse chunk for ${synthData.reference.metadata?.name}:`, parseError, 'Data:', data);
+                    console.log(`🔍 DEBUG: Failed to parse chunk for ${synthData.reference.metadata?.name}:`, parseError, 'Raw data:', data);
                   }
                 }
               }
@@ -687,6 +815,7 @@ class DirectService implements IDataService {
         // Complete the streaming message
         await state.completeMessageStream(streamingMessageId);
         
+        // Add the response to chat history without name prefix (speaker info is in system prompt)
         chatHistory.push({
           role: 'assistant',
           content: fullContent || 'No response generated'

@@ -9,8 +9,7 @@ import ChatSection from '../chat/ChatSection';
 import EditTeamModal from '../browser/EditTeamModal';
 import { AIEmployee, ChatMessage, TeamMember, Team, COAITeam } from '@/types';
 import { CustomTeam } from '../browser/CreateTeamModal';
-import { streamChat } from '@/lib/supabase';
-import { HumanTiming, sleep } from '@/lib/utils';
+// Legacy imports removed - using directService instead
 // Use the Zustand store hooks instead of context
 import { useAuth } from '@/hooks/store/useAuth';
 // import { useTeamDynamics } from '@/hooks/useTeamDynamics'; // Removed - not using team dynamics
@@ -33,7 +32,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   const [selectedCustomTeam, setSelectedCustomTeam] = useState<CustomTeam | null>(null);
   const [isProfileCollapsed, setIsProfileCollapsed] = useState(true);
   const [isBrowserCollapsed, setIsBrowserCollapsed] = useState(false);
-  const [isWaitingForStream, setIsWaitingForStream] = useState(false);
+  const [isWaitingForStream] = useState(false);
   const [globalSpacebarCount, setGlobalSpacebarCount] = useState(0);
   const [lastGlobalSpacebarPress, setLastGlobalSpacebarPress] = useState(0);
   
@@ -42,7 +41,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   const [teamToEdit, setTeamToEdit] = useState<CustomTeam | null>(null);
   
   // API key context - same interface, but now powered by Zustand
-  const { openaiApiKey, isApiKeyValid } = useApiKey();
+  const { isApiKeyValid } = useApiKey();
   
   // Auth context - same interface, but now powered by Zustand
   const { user } = useAuth();
@@ -348,22 +347,72 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     }
   }, [threadTeamMembers, activeThreadId, getThreadMembersFromStore]);
 
-  // Sync Supabase synths with local state
+  // Sync Supabase synths with local state - MERGE instead of replace to prevent duplicates
   React.useEffect(() => {
-    if (user && supabaseCustomSynths && supabaseCustomSynths.length > 0) {
-      // Debug logging removed to reduce console noise
-      
-      // Convert COAISynth to AIEmployee format
-      const convertedSynths: AIEmployee[] = supabaseCustomSynths.map(synthRow => ({
-        id: synthRow.id,
-        ...synthRow.synth_data
-      }));
-      
-      setCustomSynths(convertedSynths);
-    } else if (user && supabaseCustomSynths && supabaseCustomSynths.length === 0) {
-      // User is logged in but has no synths
-      // Debug logging removed to reduce console noise
-      setCustomSynths([]);
+    console.log('🔍 [DUPLICATE DEBUG] Supabase sync effect triggered');
+    console.log('🔍 [DUPLICATE DEBUG] user:', !!user);
+    console.log('🔍 [DUPLICATE DEBUG] supabaseCustomSynths length:', supabaseCustomSynths?.length || 0);
+    console.log('🔍 [DUPLICATE DEBUG] supabaseCustomSynths IDs:', supabaseCustomSynths?.map(s => s.id) || []);
+    
+    if (user && supabaseCustomSynths) {
+      if (supabaseCustomSynths.length > 0) {
+        // Convert COAISynth to AIEmployee format
+        const convertedSynths: AIEmployee[] = supabaseCustomSynths.map(synthRow => ({
+          id: synthRow.id,
+          ...synthRow.synth_data
+        }));
+        
+        console.log('🔍 [DUPLICATE DEBUG] Converted synths from Supabase:', convertedSynths.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
+        
+        // MERGE with existing local state to preserve local-only properties like isLoadingImage
+        setCustomSynths(prev => {
+          console.log('🔍 [DUPLICATE DEBUG] Current local synths before merge:', prev.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
+          
+          const existingLocalSynths = new Map(prev.map(synth => [synth.id, synth]));
+          const mergedSynths: AIEmployee[] = [];
+          
+          // Add/update synths from Supabase, preserving local properties
+          for (const supabaseSynth of convertedSynths) {
+            const existingLocal = existingLocalSynths.get(supabaseSynth.id);
+            if (existingLocal) {
+              console.log('🔍 [DUPLICATE DEBUG] Merging existing synth:', supabaseSynth.id, 'preserving isLoadingImage:', existingLocal.isLoadingImage);
+              // Merge: use Supabase data but preserve local-only properties
+              mergedSynths.push({
+                ...supabaseSynth,
+                isLoadingImage: existingLocal.isLoadingImage, // Preserve loading state
+              });
+              existingLocalSynths.delete(supabaseSynth.id); // Mark as processed
+            } else {
+              console.log('🔍 [DUPLICATE DEBUG] Adding new synth from Supabase:', supabaseSynth.id);
+              // New synth from Supabase - check if it needs image loading
+              const synthWithLoadingState = {
+                ...supabaseSynth,
+                // If the synth has a placeholder image, mark it as loading
+                isLoadingImage: supabaseSynth.profileImage?.includes('placeholder') || supabaseSynth.profileImage?.includes('default') || false
+              };
+              mergedSynths.push(synthWithLoadingState);
+            }
+          }
+          
+          // Add any remaining local-only synths (e.g., ones still being saved)
+          for (const localSynth of existingLocalSynths.values()) {
+            console.log('🔍 [DUPLICATE DEBUG] Preserving local-only synth:', localSynth.id, 'isLoadingImage:', localSynth.isLoadingImage);
+            mergedSynths.push(localSynth);
+          }
+          
+          console.log('🔍 [DUPLICATE DEBUG] Final merged synths:', mergedSynths.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
+          return mergedSynths;
+        });
+      } else {
+        console.log('🔍 [DUPLICATE DEBUG] No synths in Supabase, filtering local synths');
+        // User is logged in but has no synths in Supabase
+        // Only clear if we don't have any local synths that might be in the process of being saved
+        setCustomSynths(prev => {
+          const filtered = prev.filter(synth => synth.isLoadingImage || synth.id.startsWith('temp-'));
+          console.log('🔍 [DUPLICATE DEBUG] Filtered local synths:', filtered.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
+          return filtered;
+        });
+      }
     }
   }, [user, supabaseCustomSynths]);
 
@@ -494,14 +543,19 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   };
 
   // Natural Team Dynamics - simplified (removed complex dynamics)
-  const isNaturalDynamicsEnabled = false;
+  // const isNaturalDynamicsEnabled = false;
 
   // No persistence for custom synths when user is not authenticated
 
   // Handler for adding new custom synth
   const handleAddNewSynth = React.useCallback(async (newSynth: AIEmployee) => {
+    console.log('🔍 [DUPLICATE DEBUG] handleAddNewSynth called with:', { id: newSynth.id, name: newSynth.name, isLoadingImage: newSynth.isLoadingImage });
+    
+    let finalSynth = newSynth;
+    
     // If user is logged in, persist to Supabase first to get the correct ID
     if (user) {
+      console.log('🔍 [DUPLICATE DEBUG] User authenticated, saving to Supabase first');
       try {
         // Convert AIEmployee to COAISynthData format
         const synthData: COAISynthData = {
@@ -518,32 +572,112 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         
         const savedSynth = await createSynth(synthData);
         if (savedSynth) {
-          console.log('✅ Synth successfully saved to Supabase:', savedSynth.id);
+          console.log('✅ [DUPLICATE DEBUG] Synth successfully saved to Supabase:', savedSynth.id);
           
           // Create the synth with the Supabase-generated ID
-          const synthWithSupabaseId: AIEmployee = {
+          finalSynth = {
             ...newSynth,
             id: savedSynth.id
           };
           
-          // Add to local state with the correct ID
-          setCustomSynths(prev => [synthWithSupabaseId, ...prev]);
+          console.log('🔍 [DUPLICATE DEBUG] Final synth after Supabase save:', { id: finalSynth.id, name: finalSynth.name, isLoadingImage: finalSynth.isLoadingImage });
+          
+          // For authenticated users, DON'T add to local state immediately
+          // Let the Supabase sync handle it entirely to prevent duplicates
+          console.log('🔍 [DUPLICATE DEBUG] Not adding to local state - letting Supabase sync handle it to prevent duplicates');
+          // If no image loading needed, let the Supabase sync handle it entirely
         } else {
-          console.error('❌ Failed to save synth to Supabase - no data returned');
-          // Fallback: add to local state with original ID
-          setCustomSynths(prev => [newSynth, ...prev]);
+          console.error('❌ [DUPLICATE DEBUG] Failed to save synth to Supabase - no data returned');
+          // Fallback: add to local state anyway
+          setCustomSynths(prev => [finalSynth, ...prev]);
         }
       } catch (error) {
-        console.error('❌ Failed to save synth to Supabase:', error);
-        // Fallback: add to local state with original ID
-        setCustomSynths(prev => [newSynth, ...prev]);
+        console.error('❌ [DUPLICATE DEBUG] Failed to save synth to Supabase:', error);
+        // Fallback: add to local state anyway
+        setCustomSynths(prev => [finalSynth, ...prev]);
       }
     } else {
-      // User not logged in, just add to local state
-      setCustomSynths(prev => [newSynth, ...prev]);
+      console.log('🔍 [DUPLICATE DEBUG] User not authenticated, adding to local state immediately');
+      // For unauthenticated users, add to local state immediately
+      setCustomSynths(prev => [finalSynth, ...prev]);
     }
-    // Don't add to main employees list - keep custom synths separate
-  }, [user, createSynth]);
+    
+    // Handle background image generation if needed
+    if (finalSynth.isLoadingImage) {
+      console.log('🎨 Starting background image generation for synth:', finalSynth.name);
+      
+      // Import the generateSynthImage function dynamically to avoid circular dependencies
+      import('@/lib/api-utils').then(({ generateSynthImage }) => {
+        generateSynthImage({
+          name: finalSynth.name,
+          age: finalSynth.age,
+          role: finalSynth.role,
+          bio: finalSynth.bio,
+          systemPrompt: finalSynth.systemPrompt,
+          baseModel: finalSynth.baseModel,
+          profileImage: finalSynth.profileImage, // Current placeholder
+        }).then((realProfileImage) => {
+          console.log('✅ [DUPLICATE DEBUG] Background image completed for:', finalSynth.name, 'ID:', finalSynth.id);
+          
+          // Update the synth with the real image
+          const updatedSynth: AIEmployee = {
+            ...finalSynth,
+            profileImage: realProfileImage,
+            isLoadingImage: false,
+          };
+          
+          console.log('🔍 [DUPLICATE DEBUG] Updating synth with real image:', { id: updatedSynth.id, name: updatedSynth.name, isLoadingImage: updatedSynth.isLoadingImage });
+          
+          // Update in local state
+          setCustomSynths(prev => {
+            console.log('🔍 [DUPLICATE DEBUG] Current synths before image update:', prev.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
+            const updated = prev.map(synth => synth.id === finalSynth.id ? updatedSynth : synth);
+            console.log('🔍 [DUPLICATE DEBUG] Synths after image update:', updated.map(s => ({ id: s.id, name: s.name, isLoadingImage: s.isLoadingImage })));
+            return updated;
+          });
+          
+          // Update in Supabase if user is authenticated
+          if (user) {
+            updateSynth(finalSynth.id, {
+              name: updatedSynth.name,
+              role: updatedSynth.role,
+              age: updatedSynth.age,
+              profileImage: realProfileImage,
+              bio: updatedSynth.bio,
+              experience: updatedSynth.experience,
+              systemPrompt: updatedSynth.systemPrompt,
+              baseModel: updatedSynth.baseModel,
+              metadata: {}
+            }).catch(error => console.error('❌ Failed to update synth image in Supabase:', error));
+          }
+        }).catch((imageError) => {
+          console.error('⚠️ Background image generation failed for:', finalSynth.name, imageError);
+          
+          // Remove loading state even if image generation failed
+          const updatedSynth: AIEmployee = {
+            ...finalSynth,
+            isLoadingImage: false,
+          };
+          
+          setCustomSynths(prev => 
+            prev.map(synth => synth.id === finalSynth.id ? updatedSynth : synth)
+          );
+        });
+      }).catch(error => {
+        console.error('❌ Failed to import generateSynthImage:', error);
+        
+        // Remove loading state if import fails
+        const updatedSynth: AIEmployee = {
+          ...finalSynth,
+          isLoadingImage: false,
+        };
+        
+        setCustomSynths(prev => 
+          prev.map(synth => synth.id === finalSynth.id ? updatedSynth : synth)
+        );
+      });
+    }
+  }, [user, createSynth, updateSynth]);
 
   // Handler for editing custom synth
   const handleEditSynth = React.useCallback(async (updatedSynth: AIEmployee) => {
@@ -719,17 +853,23 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         }
       }
       
-      // Update synths with real IDs for local state
-      const synthsWithRealIds = newSynths.map(synth => ({
-        ...synth,
-        id: savedSynthIdMap.get(synth.id) || synth.id
-      }));
-      
-      setCustomSynths(prev => {
-        const updated = [...synthsWithRealIds, ...prev];
-        console.log(`🔍 [ADD TEAM DEBUG] Updated customSynths array now has ${updated.length} synths:`, updated.map(s => ({ id: s.id, name: s.name })));
-        return updated;
-      });
+      if (user) {
+        // For authenticated users, DON'T add to local state immediately
+        // Let the Supabase sync handle it entirely to prevent duplicates
+        console.log('🔍 [ADD TEAM DEBUG] Not adding synths to local state - letting Supabase sync handle it to prevent duplicates');
+      } else {
+        // For unauthenticated users, add to local state immediately
+        const synthsWithRealIds = newSynths.map(synth => ({
+          ...synth,
+          id: savedSynthIdMap.get(synth.id) || synth.id
+        }));
+        
+        setCustomSynths(prev => {
+          const updated = [...synthsWithRealIds, ...prev];
+          console.log(`🔍 [ADD TEAM DEBUG] Updated customSynths array now has ${updated.length} synths:`, updated.map(s => ({ id: s.id, name: s.name })));
+          return updated;
+        });
+      }
     } else {
       console.log(`🔍 [ADD TEAM DEBUG] No new synths to add - all already exist`);
     }
@@ -984,6 +1124,20 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           setActiveThreadId(newThread.id);
           setMessages([]); // Clear messages when creating new thread
           
+          // Update teams list with the new thread
+          const newTeam: Team = {
+            id: newThread.id,
+            name: `Chat with ${employee.name}`,
+            members: [newTeamMember],
+            messages: [],
+            createdAt: new Date(),
+            isActive: true
+          };
+          setTeams(prev => [...prev, newTeam]);
+          
+          // Set active thread in Zustand store
+          await switchThread(newThread.id);
+          
           // Add the synth to the new thread
           const isCustomSynth = customSynths.some(synth => synth.id === employeeId);
           const synthReference: COAITeamSynthReference = {
@@ -1005,7 +1159,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           console.error('❌ Failed to create thread or add synth:', error);
           // Fallback to local state only
           const newTeam: Team = {
-            id: `temp-team-${Date.now()}`,
+            id: crypto.randomUUID(), // Use proper UUID format
             name: `Chat with ${employee.name}`,
             members: [newTeamMember],
             messages: [],
@@ -1020,7 +1174,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       } else {
         // User not authenticated, use local state only
         const newTeam: Team = {
-          id: `temp-team-${Date.now()}`,
+          id: crypto.randomUUID(), // Use proper UUID format
           name: `Chat with ${employee.name}`,
           members: [newTeamMember],
           messages: [],
@@ -1049,6 +1203,38 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       // Persist to database if user is authenticated
       if (user && activeThreadId) {
         try {
+                    // First, verify the thread exists in the database
+          let threadIdToUse = activeThreadId;
+          const threadExists = await directService.getThread(activeThreadId);
+          if (!threadExists) {
+            console.error('❌ Thread does not exist in database:', activeThreadId);
+            // Try to create the thread if it doesn't exist
+            try {
+              const currentTeam = teams.find(t => t.id === activeThreadId);
+              const threadTitle = currentTeam?.name || 'New Chat';
+              const newThread = await directService.createThread(threadTitle);
+              
+              // Update the activeThreadId to the new thread
+              setActiveThreadId(newThread.id);
+              threadIdToUse = newThread.id;
+              
+              // Update teams list
+              setTeams(prev => prev.map(team => 
+                team.id === activeThreadId 
+                  ? { ...team, id: newThread.id }
+                  : team
+              ));
+              
+              // Update Zustand store
+              await switchThread(newThread.id);
+              
+              console.log('✅ Created missing thread:', newThread.id);
+            } catch (createError) {
+              console.error('❌ Failed to create missing thread:', createError);
+              return; // Exit early if we can't create the thread
+            }
+          }
+          
           // Determine if this is a custom synth or built-in
           const isCustomSynth = customSynths.some(synth => synth.id === employeeId);
           
@@ -1091,7 +1277,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           }
           
           // Use addSynthToThread instead of addSynthToTeam for threads
-          await addSynthToThread(activeThreadId, employeeId, synthReference);
+          await addSynthToThread(threadIdToUse, employeeId, synthReference);
           console.log('✅ Synth added to thread in database:', employee.name);
           
           // Immediately refetch thread synths to update the store
@@ -1140,7 +1326,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     // If no active thread exists, create a new thread with all members
     if (!activeThreadId) {
       const newTeam: Team = {
-        id: `team-${Date.now()}`,
+        id: crypto.randomUUID(), // Use proper UUID format
         name: `Team ${teams.length + 1}`,
         members: [...teamMembers, ...newTeamMembers],
         messages: [], // Start with empty messages for new team
@@ -1363,612 +1549,90 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     }
   }, [activeThreadId, user, customSynths, threadSynths, updateSynth, updateTeamSynthReference]);
 
-  // Original handleSendMessage for fallback
-  const originalHandleSendMessage = React.useCallback(async (displayContent: string, fullContent: string, attachedImage?: any) => {
-    if (teamMembers.length === 0) return;
+  // Legacy handleSendMessage removed - using directService instead
+
+
+
+  // Enhanced handleSendMessage using directService for proper streaming
+  const handleSendMessage = React.useCallback(async (messageData: { display: string; full: string } | string, attachedImage?: any) => {
+    if (teamMembers.length === 0) {
+      console.log('🚨 [HANDLER DEBUG] No team members, returning early');
+      return;
+    }
+
+    if (!activeThreadId) {
+      console.log('🚨 [HANDLER DEBUG] No active thread, returning early');
+      return;
+    }
 
     // Check if API key is provided
     if (!isApiKeyValid) {
       console.error('❌ No OpenAI API key provided');
-      // Add an error message to the chat
-      const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`,
-        content: '⚠️ Please enter your OpenAI API key in the header to enable AI responses.',
-        sender: 'ai',
-        timestamp: new Date(),
-        aiEmployee: {
-          id: 'system',
-          name: 'System',
-          role: 'System',
-          profileImage: '/coai-logo.png',
-          model: 'system',
-        },
-      };
-      setMessages(prev => [...prev, errorMessage]);
       return;
     }
-
-    // Add user message using DISPLAY content for chat history
-    const userMessageId = Date.now().toString();
-    const newUserMessage: ChatMessage = {
-      id: userMessageId,
-      content: displayContent || (attachedImage ? `Shared an image: ${attachedImage.name}` : ''),
-      sender: 'user',
-      timestamp: new Date(),
-      ...(attachedImage && { image: attachedImage }),
-    };
-    
-    setMessages(prev => [...prev, newUserMessage]);
-    
-    // Save user message immediately via directService
-    if (user && activeThreadId) {
-      try {
-        const messageData = directService.convertChatMessageToMessageData(newUserMessage);
-        await directService.createMessage(activeThreadId, messageData);
-        console.log('💾 User message saved via directService:', newUserMessage.id);
-      } catch (error) {
-        console.error('❌ Failed to save user message:', error);
-      }
-    }
-
-    // Prepare initial chat history (up to the user's message) - use display content for history
-    let chatHistory = messages
-      .filter(msg => !msg.id.startsWith('demo'))
-      .map(msg => ({
-        role: msg.sender === 'user' ? 'user' : 'assistant',
-        content: msg.content,
-        ...(msg.image && { image: msg.image }), // Include image data if present
-      }));
-
-    // Add the new user message to history using DISPLAY content
-    chatHistory.push({
-      role: 'user',
-      content: displayContent || (attachedImage ? `Shared an image: ${attachedImage.name}` : ''),
-      ...(attachedImage && { image: attachedImage }),
-    });
-
-    // 🚨 IMPORTANT: Create a separate AI chat history that uses FULL content for processing
-    const aiChatHistory = [...chatHistory];
-    // Replace the last user message with the full content for AI processing
-    aiChatHistory[aiChatHistory.length - 1] = {
-      role: 'user',
-      content: fullContent || (attachedImage ? `Shared an image: ${attachedImage.name}` : ''),
-      ...(attachedImage && { image: attachedImage }),
-    };
-
-    // 🚨 DEBUG: Log the content being sent to AI - use FULL content
-    console.log('🚨 [DOCUMENT CONTEXT DEBUG] Display content for chat history:', displayContent);
-    console.log('🚨 [DOCUMENT CONTEXT DEBUG] Full content being sent to AI:', fullContent);
-    console.log('🚨 [DOCUMENT CONTEXT DEBUG] Full content contains document context:', fullContent.includes('<!-- DOCUMENT_CONTEXT:'));
-    if (fullContent.includes('<!-- DOCUMENT_CONTEXT:')) {
-      const contextMatch = fullContent.match(/<!-- DOCUMENT_CONTEXT:[\s\S]*?-->/);
-      if (contextMatch) {
-        console.log('🚨 [DOCUMENT CONTEXT DEBUG] Document context found:', contextMatch[0].substring(0, 200) + '...');
-      }
-    }
-
-    // Parse mentions from the FULL message to determine which team members should respond
-    // Updated regex to capture employee names that are valid mentions
-    const mentionRegex = /@([A-Za-z]+(?:\s+[A-Za-z]+)*)(?=\s|$)/g;
-    const mentionedMemberIds: string[] = [];
-    let match;
-    
-    while ((match = mentionRegex.exec(fullContent)) !== null) {
-      const mentionName = match[1];
-      
-      // Check if this mention name matches any team member
-      const matchingMember = teamMembers.find(member => 
-        member.name.toLowerCase() === mentionName.toLowerCase()
-      );
-      
-      if (matchingMember) {
-        mentionedMemberIds.push(matchingMember.id);
-      }
-    }
-
-    // Filter team members based on mentions
-    const baseActiveMembers = mentionedMemberIds.length > 0 
-      ? teamMembers.filter(member => mentionedMemberIds.includes(member.id))
-      : teamMembers; // If no mentions, everyone responds
-    
-    // 🎲 RANDOMIZE the order of team members for each new conversation
-    const activeTeamMembers = randomizeTeamOrder(baseActiveMembers);
-    
-    // Set loading state to show spinner while waiting for stream to start
-    setIsWaitingForStream(true);
-
-    // Process active team members sequentially with human-like delays
-    for (let i = 0; i < activeTeamMembers.length; i++) {
-      const member = activeTeamMembers[i];
-      // Find the synth data from customSynths
-      const employee = customSynths.find(synth => synth.id === member.id);
-      if (!employee) continue;
-
-      // Add delay between team member responses (except for the first one)
-      if (i > 0) {
-        const betweenDelay = HumanTiming.getBetweenResponsesDelay();
-        await sleep(betweenDelay);
-      }
-
-      // Prepare message ID for this AI employee, but don't add to UI yet
-      const messageId = `${Date.now()}-${member.id}-${i}`;
-      let messageAddedToUI = false;
-      
-      // Add delay before starting to type (simulates reading/thinking)
-      const startDelay = HumanTiming.getStartDelay();
-      await sleep(startDelay);
-
-      try {
-        // Use the original system prompt
-        const finalPrompt = member.systemPrompt || `You are a ${employee.role}. Always respond according to your role.`;
-        
-        // 🚨 DEBUG: Log the system prompt construction
-        console.log(`🚨 [PROMPT DEBUG] ${employee.name}:`);
-        console.log(`🚨 [PROMPT DEBUG] - member.systemPrompt: "${member.systemPrompt}"`);
-        console.log(`🚨 [PROMPT DEBUG] - finalPrompt: "${finalPrompt}"`);
-
-        // 🚨 FRONTEND DEBUG: Track when each AI call is made
-        const callTimestamp = new Date().toISOString();
-        console.log(`🚨 [FRONTEND] ${callTimestamp} - Making API call for ${employee.name} (${i + 1}/${activeTeamMembers.length})`);
-        console.log(`🚨 [FRONTEND] Chat history length: ${chatHistory.length} messages`);
-        console.log(`🚨 [FRONTEND] Previous AI responses in history: ${chatHistory.filter(msg => msg.role === 'assistant').length}`);
-        
-        const response = await streamChat(
-          aiChatHistory,
-          employee.role,
-          member.model,
-          finalPrompt,
-          employee.name,
-          openaiApiKey
-        );
-
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-
-        if (!reader) throw new Error('No reader available');
-
-        let accumulatedContent = '';
-        let streamCompleted = false;
-
-        // Process stream with human-like delays
-        while (true) {
-          const { done, value } = await reader.read();
-          
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(5).trim();
-              if (!data || data === '[DONE]') {
-                if (data === '[DONE]') {
-                  streamCompleted = true;
-                }
-                continue;
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                
-                // Check for stream completion first
-                if (parsed.choices && parsed.choices[0] && parsed.choices[0].finish_reason) {
-                  streamCompleted = true;
-                  break;
-                }
-                
-                // Extract content from OpenAI format
-                const content = parsed.choices?.[0]?.delta?.content || parsed.content;
-                if (content) {
-                  accumulatedContent += content;
-                  
-                  // Add message to UI only when we first receive content
-                  if (!messageAddedToUI) {
-                    // Hide the waiting spinner as soon as we get the first AI response
-                    setIsWaitingForStream(false);
-                    
-                    const aiMessage: ChatMessage = {
-                      id: messageId,
-                      content: accumulatedContent,
-                      sender: 'ai' as const,
-                      timestamp: new Date(),
-                      isLoading: true,
-                      aiEmployee: {
-                        id: employee.id,
-                        name: employee.name,
-                        role: employee.role,
-                        profileImage: employee.profileImage,
-                        model: member.model,
-                      },
-                    };
-                    setMessages(prev => [...prev, aiMessage]);
-                    messageAddedToUI = true;
-                  } else {
-                    // Update the message content in real-time
-                    setMessages(prev => prev.map(msg =>
-                      msg.id === messageId
-                        ? {
-                            ...msg,
-                            content: accumulatedContent,
-                            isLoading: true, // Keep loading true to show typing indicator
-                          }
-                        : msg
-                    ));
-                  }
-                }
-
-                // Legacy completion check (backup)
-                if (parsed.done) {
-                  streamCompleted = true;
-                  break;
-                }
-              } catch (e) {
-                console.error('Error parsing chunk:', e);
-              }
-            }
-          }
-          
-          // Exit main loop if stream completed
-          if (streamCompleted) {
-            break;
-          }
-        }
-
-        // Response completed successfully
-
-        // Mark the message as complete and add to chat history for next AI
-        if (accumulatedContent.trim()) {
-          aiChatHistory.push({
-            role: 'assistant',
-            content: accumulatedContent,
-          });
-        }
-
-        // Mark the message as complete (only if it was added to UI)
-        if (messageAddedToUI) {
-          const completedMessage: ChatMessage = {
-            id: messageId,
-            content: accumulatedContent,
-            sender: 'ai' as const,
-            timestamp: new Date(),
-            isLoading: false,
-            aiEmployee: {
-              id: employee.id,
-              name: employee.name,
-              role: employee.role,
-              profileImage: employee.profileImage,
-              model: member.model,
-            },
-          };
-          
-          setMessages(prev => prev.map(msg =>
-            msg.id === messageId
-              ? completedMessage
-              : msg
-          ));
-          
-          // Save AI message immediately via directService
-          if (user && activeThreadId) {
-            try {
-              const messageData = directService.convertChatMessageToMessageData(completedMessage);
-              await directService.createMessage(activeThreadId, messageData);
-              console.log('💾 AI message saved via directService:', completedMessage.id);
-            } catch (error) {
-              console.error('❌ Failed to save AI message:', error);
-            }
-          }
-        }
-
-      } catch (error) {
-        console.error(`❌ [${employee.name}] Error in chat stream:`, error);
-        // Remove the message on error (only if it was added to UI)
-        if (messageAddedToUI) {
-          setMessages(prev => prev.filter(msg => msg.id !== messageId));
-        }
-      }
-    }
-
-    // Ensure loading state is cleared when all processing is done
-    setIsWaitingForStream(false);
-  }, [messages, teamMembers, customSynths, isApiKeyValid, openaiApiKey]);
-
-
-
-  // Enhanced handleSendMessage with Natural Team Dynamics
-  const handleSendMessage = React.useCallback(async (messageData: { display: string; full: string } | string, attachedImage?: any) => {
-    console.log(`🚨 [HANDLER DEBUG] isNaturalDynamicsEnabled: ${isNaturalDynamicsEnabled}`);
-    console.log(`🚨 [HANDLER DEBUG] teamMembers.length: ${teamMembers.length}`);
-    console.log(`🚨 [HANDLER DEBUG] isApiKeyValid: ${isApiKeyValid}`);
     
     // Handle both old string format and new object format for backward compatibility
     const displayContent = typeof messageData === 'string' ? messageData : messageData.display;
     const fullContent = typeof messageData === 'string' ? messageData : messageData.full;
     
-    // 🚨 DEBUG: Track document context in Layout
-    console.log('🚨 [DOCUMENT DEBUG] === LAYOUT HANDLER DEBUG ===');
-    console.log('🚨 [DOCUMENT DEBUG] Display content received in Layout:', displayContent.substring(0, 200) + '...');
-    console.log('🚨 [DOCUMENT DEBUG] Full content received in Layout:', fullContent.substring(0, 200) + '...');
-    console.log('🚨 [DOCUMENT DEBUG] Display content contains DOCUMENT_CONTEXT:', displayContent.includes('<!-- DOCUMENT_CONTEXT:'));
-    console.log('🚨 [DOCUMENT DEBUG] Full content contains DOCUMENT_CONTEXT:', fullContent.includes('<!-- DOCUMENT_CONTEXT:'));
+    console.log('🚨 [HANDLER DEBUG] Using directService for message sending');
+    console.log('🚨 [HANDLER DEBUG] Display content:', displayContent.substring(0, 100) + '...');
+    console.log('🚨 [HANDLER DEBUG] Full content:', fullContent.substring(0, 100) + '...');
     
-    // Debug: Log the synths being used
-    console.log(`🔍 [SYNTHS DEBUG] Total custom synths: ${customSynths.length}`);
-    console.log(`🔍 [SYNTHS DEBUG] Custom synths IDs:`, customSynths.map(s => ({ id: s.id, name: s.name })));
-    console.log(`🔍 [SYNTHS DEBUG] Team member IDs:`, teamMembers.map(m => ({ id: m.id, name: m.name })));
-    
-    // Use sequential message handling
-    console.log('🔄 Using sequential message handling');
-    await originalHandleSendMessage(displayContent, fullContent, attachedImage);
-    
-    // Messages are saved immediately when created - no batch saving needed
-  }, [
-    teamMembers,
-    customSynths,
-    messages,
-    openaiApiKey,
-    isApiKeyValid,
-    setMessages,
-    setIsWaitingForStream,
-    originalHandleSendMessage
-  ]);
+    // Use directService to handle the message - this will use proper streaming
+    try {
+      await directService.sendMessage(activeThreadId, {
+        content: fullContent, // Use full content for AI processing
+        sender: 'user',
+        ...(attachedImage && { image: attachedImage })
+      });
+      console.log('✅ [HANDLER DEBUG] Message sent via directService');
+    } catch (error) {
+      console.error('❌ [HANDLER DEBUG] Failed to send message via directService:', error);
+    }
+  }, [teamMembers, isApiKeyValid, activeThreadId]);
 
-  // Handle AI continuation (spacebar trigger)
+  // Handle AI continuation (spacebar trigger) - WORKING VERSION
   const handleAIContinue = React.useCallback(async () => {
-    if (teamMembers.length === 0) {
+    console.log('🚀 [AI CONTINUE DEBUG] handleAIContinue called');
+    console.log('🚀 [AI CONTINUE DEBUG] teamMembers.length:', teamMembers.length);
+    console.log('🚀 [AI CONTINUE DEBUG] threadTeamMembers.length:', threadTeamMembers.length);
+    console.log('🚀 [AI CONTINUE DEBUG] threadSynths.length:', threadSynths.length);
+    console.log('🚀 [AI CONTINUE DEBUG] isApiKeyValid:', isApiKeyValid);
+    console.log('🚀 [AI CONTINUE DEBUG] activeThreadId:', activeThreadId);
+    
+    // Use threadSynths (the actual synths in the current thread) instead of teamMembers
+    if (threadSynths.length === 0) {
+      console.log('🚀 [AI CONTINUE DEBUG] No thread synths, returning early');
       return;
     }
 
     // Check if API key is provided
     if (!isApiKeyValid) {
       console.error('❌ No OpenAI API key provided for AI continuation');
-      // Add an error message to the chat
-      const errorMessage: ChatMessage = {
-        id: `error-continue-${Date.now()}`,
-        content: '⚠️ Please enter your OpenAI API key in the header to enable AI responses.',
-        sender: 'ai',
-        timestamp: new Date(),
-        aiEmployee: {
-          id: 'system',
-          name: 'System',
-          role: 'System',
-          profileImage: '/coai-logo.png',
-          model: 'system',
-        },
-      };
-      setMessages(prev => [...prev, errorMessage]);
       return;
     }
-
-    // Prepare chat history from current messages
-    let chatHistory = messages
-      .filter(msg => !msg.id.startsWith('demo'))
-      .map(msg => ({
-        role: msg.sender === 'user' ? 'user' : 'assistant',
-        content: msg.content,
-        ...(msg.image && { image: msg.image }), // Include image data if present
-      }));
-
-    // Add a system message to indicate this is a continuation
-    chatHistory.push({
-      role: 'user',
-      content: '[Continue the conversation - explore the topic further and share your thoughts among the team]'
-    });
-
-    // All team members respond in AI continuation (no filtering by mentions)
-    // 🎲 RANDOMIZE the order of team members for AI continuation
-    const activeTeamMembers = randomizeTeamOrder(teamMembers);
     
-    console.log(`🎲 [AI CONTINUE - RANDOM ORDER] Team members will respond in this order:`, 
-      activeTeamMembers.map(m => m.name).join(' → '));
-
-    // Set loading state to show spinner while waiting for stream to start
-    setIsWaitingForStream(true);
-
-    // Process team members sequentially with human-like delays
-    for (let i = 0; i < activeTeamMembers.length; i++) {
-      const member = activeTeamMembers[i];
-      // Find the synth data from customSynths
-      const synth = customSynths.find(s => s.id === member.id);
-      if (!synth) continue;
-
-      // Add delay between team member responses (except for the first one)
-      if (i > 0) {
-        const betweenDelay = HumanTiming.getBetweenResponsesDelay();
-        await sleep(betweenDelay);
+    console.log('🚀 [AI CONTINUE DEBUG] API key validation passed, proceeding with AI continuation');
+    
+    // Use directService to handle AI continuation - this will trigger all team members to respond
+    try {
+      if (activeThreadId) {
+        console.log('🚀 [AI CONTINUE DEBUG] Sending AI continuation message to thread:', activeThreadId);
+        await directService.sendMessage(activeThreadId, {
+          content: '[Continue the conversation - explore the topic further and share your thoughts among the team]',
+          sender: 'user'
+        });
+        console.log('✅ [AI CONTINUE DEBUG] AI continuation message sent via directService');
+      } else {
+        console.log('🚀 [AI CONTINUE DEBUG] No active thread for directService, skipping');
       }
-
-      // Prepare message ID for this AI synth, but don't add to UI yet
-      const messageId = `${Date.now()}-continue-${member.id}-${i}`;
-      let messageAddedToUI = false;
-      
-      // Add delay before starting to type (simulates reading/thinking)
-      const startDelay = HumanTiming.getStartDelay();
-      await sleep(startDelay);
-
-      try {
-        // Use original system prompt for AI continuation
-        const continuationPrompt = member.systemPrompt ? 
-          `${member.systemPrompt}\n\nCONTINUATION CONTEXT: The team is naturally continuing their conversation. Build upon what has been discussed and share your perspective on how to take this further. Be authentic to your role and personality.` :
-          `You are a ${synth.role}. The team is continuing their conversation naturally. Build upon what has been discussed and add your unique perspective.`;
-
-        // 🚨 FRONTEND DEBUG: Track AI continuation calls
-        const continuationCallTimestamp = new Date().toISOString();
-        console.log(`🚨 [AI CONTINUE] ${continuationCallTimestamp} - Making API call for ${synth.name} (${i + 1}/${activeTeamMembers.length})`);
-        console.log(`🚨 [AI CONTINUE] Chat history length: ${chatHistory.length} messages`);
-        console.log(`🚨 [AI CONTINUE] Previous AI responses in history: ${chatHistory.filter(msg => msg.role === 'assistant').length}`);
-        
-        const response = await streamChat(
-          chatHistory,
-          synth.role,
-          member.model,
-          continuationPrompt,
-          synth.name,
-          openaiApiKey
-        );
-
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-
-        if (!reader) throw new Error('No reader available');
-
-        let accumulatedContent = '';
-        let streamCompleted = false;
-
-        // Process stream with human-like delays
-        while (true) {
-          const { done, value } = await reader.read();
-          
-          if (done) {
-            break;
-          }
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(5).trim();
-              if (!data || data === '[DONE]') {
-                if (data === '[DONE]') {
-                  streamCompleted = true;
-                }
-                continue;
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                
-                // Check for stream completion first
-                if (parsed.choices && parsed.choices[0] && parsed.choices[0].finish_reason) {
-                  streamCompleted = true;
-                  break;
-                }
-                
-                // Extract content from OpenAI format
-                const content = parsed.choices?.[0]?.delta?.content || parsed.content;
-                if (content) {
-                  accumulatedContent += content;
-                  
-                  // Add message to UI only when we first receive content
-                  if (!messageAddedToUI) {
-                    // Hide the waiting spinner as soon as we get the first AI response
-                    setIsWaitingForStream(false);
-                    
-                    const aiMessage: ChatMessage = {
-                      id: messageId,
-                      content: accumulatedContent,
-                      sender: 'ai' as const,
-                      timestamp: new Date(),
-                      isLoading: true,
-                      aiEmployee: {
-                        id: synth.id,
-                        name: synth.name,
-                        role: synth.role,
-                        profileImage: synth.profileImage,
-                        model: member.model,
-                      },
-                    };
-                    setMessages(prev => [...prev, aiMessage]);
-                    messageAddedToUI = true;
-                  } else {
-                    // Update the message content in real-time
-                    setMessages(prev => prev.map(msg =>
-                      msg.id === messageId
-                        ? {
-                            ...msg,
-                            content: accumulatedContent,
-                            isLoading: true, // Keep loading true to show typing indicator
-                          }
-                        : msg
-                    ));
-                  }
-                }
-
-                // Legacy completion check (backup)
-                if (parsed.done) {
-                  streamCompleted = true;
-                  break;
-                }
-              } catch (e) {
-                console.error('Error parsing chunk:', e);
-              }
-            }
-          }
-          
-          // Exit main loop if stream completed
-          if (streamCompleted) {
-            break;
-          }
-        }
-
-        // Mark the message as complete and add to chat history for next AI
-        if (accumulatedContent.trim()) {
-          chatHistory.push({
-            role: 'assistant',
-            content: accumulatedContent,
-          });
-        }
-
-        // Mark the message as complete (only if it was added to UI)
-        if (messageAddedToUI) {
-          const completedMessage: ChatMessage = {
-            id: messageId,
-            content: accumulatedContent,
-            sender: 'ai' as const,
-            timestamp: new Date(),
-            isLoading: false,
-            aiEmployee: {
-              id: synth.id,
-              name: synth.name,
-              role: synth.role,
-              profileImage: synth.profileImage,
-              model: member.model,
-            },
-          };
-          
-          setMessages(prev => prev.map(msg =>
-            msg.id === messageId
-              ? completedMessage
-              : msg
-          ));
-          
-          // Save AI message immediately via directService
-          if (user && activeThreadId) {
-            try {
-              const messageData = directService.convertChatMessageToMessageData(completedMessage);
-              await directService.createMessage(activeThreadId, messageData);
-              console.log('💾 AI continuation message saved via directService:', completedMessage.id);
-            } catch (error) {
-              console.error('❌ Failed to save AI continuation message:', error);
-            }
-          }
-        }
-
-      } catch (error) {
-        console.error(`❌ [AI Continue] [${synth.name}] Error in chat stream:`, error);
-        // Remove the message on error (only if it was added to UI)
-        if (messageAddedToUI) {
-          setMessages(prev => prev.filter(msg => msg.id !== messageId));
-        }
-      }
+    } catch (error) {
+      console.error('❌ [AI CONTINUE DEBUG] Failed to send AI continuation via directService:', error);
     }
+  }, [threadSynths, threadTeamMembers, teamMembers, isApiKeyValid, activeThreadId]);
 
-    // Ensure loading state is cleared when all processing is done
-    setIsWaitingForStream(false);
-  }, [messages, teamMembers, customSynths, isApiKeyValid, openaiApiKey]);
-
-  // Utility function to randomize team member order
-  const randomizeTeamOrder = React.useCallback((members: TeamMember[]): TeamMember[] => {
-    const shuffled = [...members];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
-  }, []);
+  // Legacy randomizeTeamOrder removed - using directService instead
 
   // Team management handlers
   const handleSelectTeam = React.useCallback(async (teamId: string) => {
@@ -2041,96 +1705,65 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     
     if (user) {
       try {
-        // Generate optimistic thread data and add to UI immediately
-        const optimisticThreadId = `thread-${Date.now()}`;
-        const optimisticThreadTitle = `Chat ${new Date().toLocaleString()}`;
+        // Create thread in Supabase FIRST, then update UI
+        const newThreadTitle = `Chat ${new Date().toLocaleString()}`;
+        const realThread = await directService.createThread(newThreadTitle);
         
         const newThreadAsTeam: Team = {
-          id: optimisticThreadId,
-          name: optimisticThreadTitle,
+          id: realThread.id, // Use the real Supabase ID immediately
+          name: newThreadTitle,
           members: [], // Start with empty synths list for new thread
           messages: [], // Start fresh
           createdAt: new Date(),
           isActive: true,
         };
         
-        // Add to UI immediately (optimistic update)
+        // Add to UI with real ID
         setTeams(prev => {
           const updatedTeams = [newThreadAsTeam, ...prev];
-          saveThreadsCache(updatedTeams); // Update cache with optimistic thread
+          saveThreadsCache(updatedTeams);
           return updatedTeams;
         });
-        setActiveThreadId(optimisticThreadId);
+        setActiveThreadId(realThread.id);
         setTeamMembers([]); // Clear team members for new thread
         setMessages([]);
         
-        // Also set the optimistic thread in the Zustand store
+        // Set the real thread in the Zustand store
+        await switchThread(realThread.id);
+        
+        // Also update Supabase active thread via directService
+        await directService.setActiveThreadId(realThread.id);
+        
+        console.log('✅ Thread created in Supabase with real ID:', realThread.id);
+        console.log('💬 New chat thread created (empty - no synths copied)');
+      } catch (error) {
+        console.error('❌ Failed to create thread in Supabase:', error);
+        
+        // Fallback: create optimistic thread if Supabase fails
+        const optimisticThreadId = crypto.randomUUID();
+        const optimisticThreadTitle = `Chat ${new Date().toLocaleString()}`;
+        
+        const newThreadAsTeam: Team = {
+          id: optimisticThreadId,
+          name: optimisticThreadTitle,
+          members: [],
+          messages: [],
+          createdAt: new Date(),
+          isActive: true,
+        };
+        
+        setTeams(prev => {
+          const updatedTeams = [newThreadAsTeam, ...prev];
+          saveThreadsCache(updatedTeams);
+          return updatedTeams;
+        });
+        setActiveThreadId(optimisticThreadId);
+        setTeamMembers([]);
+        setMessages([]);
+        
         await switchThread(optimisticThreadId);
         
-        // Create thread in Supabase asynchronously via directService
-        try {
-          const realThread = await directService.createThread(optimisticThreadTitle);
-          
-          // Update with real thread ID from Supabase atomically
-          setTeams(prev => {
-            const updatedTeams = prev.map(thread => 
-              thread.id === optimisticThreadId 
-                ? { ...thread, id: realThread.id }
-                : thread
-            );
-            saveThreadsCache(updatedTeams); // Update cache with real ID
-            return updatedTeams;
-          });
-          
-          // Update active thread ID to real ID
-          setActiveThreadId(realThread.id);
-          
-          // Also update Supabase active thread via directService
-          await directService.setActiveThreadId(realThread.id);
-          
-          // Update the Zustand store with the real thread ID
-          await switchThread(realThread.id);
-          
-          // New threads start with no synths - users can add them manually
-          
-          console.log('✅ Thread created in Supabase:', realThread.id);
-          console.log('🔍 DEBUG: Thread state after creation - optimistic:', optimisticThreadId, '-> real:', realThread.id);
-          
-          // Trigger a fresh data load to ensure sync
-          setTimeout(async () => {
-            try {
-              const freshThreads = await directService.fetchThreads();
-              setTeams(prev => {
-                // Only update if we don't have newer optimistic updates
-                const hasNewerOptimistic = prev.some(t => t.id.startsWith('thread-') && t.id !== optimisticThreadId);
-                if (!hasNewerOptimistic) {
-                  console.log('🔄 Refreshing with latest Supabase data after thread creation');
-                  const threadsAsTeams = freshThreads.map(thread => ({
-                    id: thread.id,
-                    name: thread.title,
-                    members: [], // Will be populated when thread is selected
-                    messages: [], // Will be populated when thread is selected
-                    createdAt: thread.createdAt,
-                    isActive: thread.isActive
-                  }));
-                  saveThreadsCache(threadsAsTeams);
-                  return threadsAsTeams;
-                }
-                return prev;
-              });
-            } catch (error) {
-              console.warn('Failed to refresh threads after creation:', error);
-            }
-          }, 1000); // Small delay to ensure Supabase has processed the creation
-        } catch (error) {
-          console.error('❌ Failed to create thread in Supabase:', error);
-          console.log('🔍 DEBUG: Thread state after creation - optimistic:', optimisticThreadId, '-> real: pending (error)');
-          // Keep optimistic data - thread will be created when first message is sent
-        }
-        
-        console.log('💬 New chat thread created instantly (empty - no synths copied)');
-      } catch (error) {
-        console.error('Failed to create new chat:', error);
+        console.log('⚠️ Using optimistic thread due to Supabase error:', optimisticThreadId);
       }
     } else {
       // For unauthenticated users, just clear messages locally
@@ -2285,6 +1918,11 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       
       // Handle spacebar for AI continuation (global, even when not typing)
       if (event.key === ' ' && !isTyping && teamMembers.length > 0 && !isWaitingForStream) {
+        console.log('🚀 [SPACEBAR DEBUG] Spacebar pressed for AI continuation');
+        console.log('🚀 [SPACEBAR DEBUG] isTyping:', isTyping);
+        console.log('🚀 [SPACEBAR DEBUG] teamMembers.length:', teamMembers.length);
+        console.log('🚀 [SPACEBAR DEBUG] isWaitingForStream:', isWaitingForStream);
+        
         event.preventDefault();
         
         const now = Date.now();
@@ -2296,6 +1934,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         }
         setLastGlobalSpacebarPress(now);
         
+        console.log('🚀 [SPACEBAR DEBUG] Calling handleAIContinue...');
         handleAIContinue();
         return;
       }

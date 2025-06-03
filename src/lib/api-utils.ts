@@ -142,7 +142,7 @@ export const generateAISynth = async (request: SynthGenerationRequest): Promise<
   return result.synth;
 };
 
-export const generateSynthImage = async (synthData: GeneratedSynth): Promise<string> => {
+export const generateSynthImage = async (synthData: GeneratedSynth & { keywords?: string }): Promise<string> => {
   // Get Runware API key from Zustand store instead of localStorage
   const store = useAppStore.getState();
   console.log('🔑 API Key State:', { 
@@ -193,6 +193,7 @@ export const generateSynthImage = async (synthData: GeneratedSynth): Promise<str
     bio: synthData.bio || '',
     systemPrompt: synthData.systemPrompt,
     baseModel: synthData.baseModel,
+    keywords: synthData.keywords || synthData.role, // Use passed keywords or fallback to role
   };
   
   console.log('📋 Request Payload:', {
@@ -243,8 +244,32 @@ export const generateSynthImage = async (synthData: GeneratedSynth): Promise<str
 
 export const generateTeamImage = async (teamData: any): Promise<string> => {
   // Get Runware API key from Zustand store instead of localStorage
-  const runwareApiKey = useAppStore.getState().tempApiKeys.runware;
+  const store = useAppStore.getState();
+  console.log('🔑 Team Image - API Key State:', { 
+    hasStoreKeys: !!store.tempApiKeys, 
+    keys: Object.keys(store.tempApiKeys || {})
+  });
+  
+  // First try to get the key from Zustand store
+  let runwareApiKey = store.tempApiKeys?.runware;
+  
+  // If not in store, fall back to localStorage for backwards compatibility
   if (!runwareApiKey) {
+    console.log('⚠️ Team Image - Runware API key not found in Zustand store, checking localStorage...');
+    const localStorageKey = localStorage.getItem('runware_api_key');
+    if (localStorageKey) {
+      runwareApiKey = localStorageKey;
+    }
+  }
+  
+  console.log('🔑 Team Image - Runware API Key Status:', { 
+    hasKey: !!runwareApiKey, 
+    keyLength: runwareApiKey ? runwareApiKey.length : 0,
+    source: store.tempApiKeys?.runware ? 'zustand' : (runwareApiKey ? 'localStorage' : 'none')
+  });
+  
+  if (!runwareApiKey) {
+    console.error('❌ Team Image - Runware API key is missing from both store and localStorage!');
     throw new Error('Runware API key not found. Please set your Runware API key in settings.');
   }
 

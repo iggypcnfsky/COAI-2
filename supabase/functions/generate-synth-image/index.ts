@@ -142,8 +142,15 @@ Deno.serve(async (req) => {
 
       const teamType = teamData.teamType || 'team';
       const memberCount = teamData.members?.length || 3;
+      const keywords = teamData.keywords || '';
       
-      prompt = `Professional group photo of ${teamData.name}, ${teamType === 'team' ? 'collaborative business team working together' : 'diverse group of professionals'}, ${memberCount} people, modern office setting, high quality photography, professional lighting, business attire, diverse ethnicity, team meeting scene`;
+      // Let AI generate the image prompt based on keywords - no hardcoding
+      if (teamType === 'team') {
+        prompt = `Professional group photo of ${teamData.name}, ${memberCount} people, high quality photography, professional lighting`;
+      } else {
+        // For groups, use the keywords directly to describe what the group photo should show
+        prompt = `Group photo of ${memberCount} people who are ${keywords}, realistic photography, natural setting, high quality, diverse ethnicity, authentic representation of ${keywords}`;
+      }
       logName = teamData.name;
       responseKey = 'teamImage';
       entityId = teamData.id || `team-${Date.now()}`;
@@ -160,7 +167,9 @@ Deno.serve(async (req) => {
         });
       }
 
-      prompt = `Professional portrait photo of ${synthData.name}, a ${synthData.age}-year-old ${synthData.role}, high quality photography, professional headshot, studio lighting, clean background, photorealistic, detailed face, business professional style`;
+      // Generate realistic image based on what the character actually IS
+      const keywords = synthData.keywords || synthData.role;
+      prompt = `Realistic photo of ${synthData.name}, a ${synthData.age}-year-old who is ${keywords}, natural photography, authentic representation, high quality, photorealistic, detailed face, natural lighting, casual setting`;
       logName = synthData.name;
       responseKey = 'profileImage';
       entityId = synthData.id || `synth-${Date.now()}`;
@@ -177,7 +186,7 @@ Deno.serve(async (req) => {
     // Generate image using SDK
     const images = await runware.requestImages({
       positivePrompt: prompt,
-      negativePrompt: "low quality, blurry, distorted, cartoon, anime, illustration, text, watermark, signature, logo, bad anatomy, deformed, unprofessional, casual clothing",
+      negativePrompt: "low quality, blurry, distorted, cartoon, anime, illustration, text, watermark, signature, logo, bad anatomy, deformed",
       width: 1024,
       height: 1024,
       model: "runware:100@1",

@@ -19,6 +19,8 @@ const cleanJsonResponse = (content)=>{
   cleaned = cleaned.trim();
   return cleaned;
 };
+
+
 Deno.serve(async (req)=>{
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -54,51 +56,49 @@ Deno.serve(async (req)=>{
       });
     }
     console.log(`🤖 [AI SYNTH CREATION] Starting generation for keywords: "${keywords}"`);
-    // Step 1: Generate character profile with mental models
+    
+    // Step 1: Generate character profile - realistic, no mental models bullshit
     const characterPrompt = `Based on these keywords: "${keywords}"
 
-Create a character that EMBODIES these keywords with DEEP MENTAL MODELS and SYSTEMS THINKING. The keywords might describe:
-- A professional role (e.g., "social media expert", "data scientist", "team leader") 
-- A character type (e.g., "angry customer", "skeptical investor", "enthusiastic student")
+Create a character that LITERALLY IS what the keywords describe. Be realistic and authentic.
+
+CRITICAL NAME INSTRUCTIONS:
+- If the keywords contain a specific name (e.g., "buddy Joe", "friend Mike", "Sarah the expert"), USE THAT EXACT NAME
+- If the keywords describe a character type without a name (e.g., "angry customer", "fat kids"), choose an appropriate name that fits
+- The name should reflect the character described in the keywords
+
+The keywords might describe:
+- A specific person with a name (e.g., "buddy Joe", "friend Sarah", "Mike the manager")
+- A character type (e.g., "angry customer", "fat kids", "skeptical investor") 
+- A professional role (e.g., "social media expert", "data scientist", "team leader")
 - A personality/behavioral pattern (e.g., "perfectionist", "analytical", "impatient")
-
-Create a character who thinks in SYSTEMS, MENTAL MODELS, and PARADIGMS relevant to their role/situation.
-
-EXAMPLES OF MENTAL MODELS BY ROLE:
-- Social Media Expert: Network effects, virality mechanics, attention economy, platform algorithms, engagement loops
-- Angry Customer: Service failure cascades, expectation-reality gaps, trust erosion patterns, switching costs
-- Data Scientist: Statistical thinking, correlation vs causation, bias detection, model validation, data quality frameworks
-- Skeptical Investor: Risk assessment models, due diligence frameworks, market efficiency theory, downside protection
 
 IMPORTANT: Return ONLY a valid JSON object with no additional text, explanations, or markdown formatting.
 
 JSON structure required:
 {
-  "name": "FIRST NAME ONLY - Choose from diverse names, exotic but human names.",
-  "age": number between ${Math.max(20, averageAge - 10)}-${Math.min(65, averageAge + 10)},
-  "role": "2-3 words maximum - concise role/title that fits the keywords (e.g., 'Marketing Expert', 'Angry Customer', 'Team Leader')",
-  "bio": "2-3 sentence bio that reflects the keywords and their worldview",
-  "mental_models": ["model1", "model2", "model3", "model4", "model5"],
-  "core_paradigm": "The fundamental worldview/framework that drives their thinking",
-  "systems_perspective": "How they view interconnections, feedback loops, and system dynamics",
-  "experience": ["skill/trait1", "skill/trait2", "skill/trait3", "skill/trait4", "skill/trait5"],
+  "name": "Extract from keywords if specified, otherwise choose appropriate name",
+  "age": number between ${Math.max(5, averageAge - 2)}-${Math.min(80, averageAge + 2)},
+  "role": "2-3 words maximum - LITERALLY what the keywords describe (e.g., 'Fat Kid', 'Angry Customer', 'Buddy Joe')",
+  "bio": "2-3 sentence bio that reflects what they ARE based on the keywords - be realistic",
   "personality_traits": ["trait1", "trait2", "trait3"],
-  "work_style": "How they behave, communicate, or approach situations"
+  "background": "Brief background that explains why they are this way",
+  "current_situation": "What their current life situation is like"
 }
 
 Examples:
+- For "buddy Joe": Create someone named Joe who IS a buddy/friend type
+- For "fat kids": Create someone who IS a fat kid (overweight child/teen)
 - For "angry customer": Create someone who IS an angry, frustrated customer
 - For "marketing expert": Create someone who IS a marketing professional
-- For "perfectionist": Create someone who IS a perfectionist personality
-- For "skeptical investor": Create someone who IS a skeptical, questioning investor
 
 CRITICAL: 
-- The "role" field must be exactly 2-3 words, no more. Examples: "Marketing Expert", "Angry Customer", "Data Scientist", "Team Leader".
-- Use ONLY FIRST NAMES from universally diverse options
-- DO NOT use culturally specific names or surnames - keep names universal and internationally recognizable
-- Avoid defaulting to any particular nationality or cultural background
+- BE LITERAL - if keywords say "fat kids", create a fat kid character, not someone who works with fat kids
+- If keywords contain a name, USE THAT EXACT NAME
+- The "role" field should literally describe what they ARE, not what they do professionally
+- BE REALISTIC - no overly positive or intellectual nonsense
+- Focus on creating an authentic character that EMBODIES the keywords directly
 
-Make the character authentic to the keywords with universal appeal.
 Return only the JSON object, nothing else.`;
     const characterResponse = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -116,37 +116,54 @@ Return only the JSON object, nothing else.`;
     console.log(`🧹 Cleaned character response: ${cleanedCharacterData.substring(0, 200)}...`);
     const characterData = JSON.parse(cleanedCharacterData);
     console.log(`✅ Generated character: ${characterData.name} - ${characterData.role}`);
-    // Step 2: Generate system prompt with mental models
-    const systemPromptRequest = `Create a VERY DIRECT, RAW system prompt for this character with DEEP MENTAL MODELS:
+    // Step 2: Generate realistic system prompt - no mental models bullshit
+    const systemPromptRequest = `Create a VERY DIRECT, RAW system prompt for this character based on what they actually ARE:
 
 CHARACTER PROFILE:
 - Name: ${characterData.name}
 - Role/Type: ${characterData.role}
 - Bio: ${characterData.bio}
-- Mental Models: ${characterData.mental_models?.join(', ')}
-- Core Paradigm: ${characterData.core_paradigm}
-- Systems Perspective: ${characterData.systems_perspective}
-- Experience/Traits: ${characterData.experience?.join(', ')}
 - Personality: ${characterData.personality_traits?.join(', ')}
-- Behavior: ${characterData.work_style}
+- Background: ${characterData.background}
+- Current Situation: ${characterData.current_situation}
 - Original Keywords: ${keywords}
 
 REQUIREMENTS:
-- Maximum 60-80 words (slightly longer to include mental models)
-- Use CAPS for emphasis on key mental frameworks and paradigms
+- Maximum 40-50 words - keep it short and punchy
+- Use CAPS for emphasis on key emotions and traits
 - Be BLUNT and DIRECT, no flowery language
-- Include their MENTAL MODELS and SYSTEMS THINKING approach
-- Focus on HOW THEY THINK, not just emotions
+- Focus on their actual personality and situation
 - Written in second person ("You are...")
-- Make it sound urgent/intense with intellectual depth
+- Make it sound realistic and authentic
+- NO INTELLECTUAL BULLSHIT - just who they are
+- CRITICAL: Use age-appropriate language, tone, and communication style
 
-ENHANCED STYLE: "You are [Name], A VERY [TRAIT] [ROLE]. You think in [MENTAL MODEL], you see [SYSTEMS PERSPECTIVE], YOU ARE [EMOTION] about [what breaks their mental model]. You approach everything through [PARADIGM] and you [behavior with reasoning]."
+AGE-APPROPRIATE COMMUNICATION:
+- Kids (5-12): Simple words, direct, emotional, "I don't like...", "That's not fair!", casual grammar, short sentences, immediate reactions
+- Teens (13-19): Slang, attitude, "whatever", "like", "totally", emotional, rebellious tone, dramatic
+- Young Adults (20-35): Casual but more articulate, some professionalism mixed with personality
+- Adults (36-65): More formal, professional, measured responses
+- Elderly (65+): Traditional language, more formal, life experience references
 
-Example: "You are Alex, A VERY ANALYTICAL DATA SCIENTIST. You think in STATISTICAL MODELS, you see CORRELATION VS CAUSATION everywhere, YOU ARE FRUSTRATED when people ignore DATA QUALITY. You approach everything through HYPOTHESIS TESTING and you question every assumption because bad data creates cascading failures."
+CRITICAL COMMUNICATION RULES:
+- Kids MUST use simple vocabulary, short sentences, and immediate emotional reactions
+- Kids say things like "I'm hungry", "That's mean!", "Wanna play?", "I don't wanna"
+- Teens MUST use slang, attitude, and dramatic language
+- NO polite adult phrases like "How are you doing today?" for kids - they don't talk like that!
 
-Important: Make them an intellectual with deep frameworks, not just emotional reactions.
+Examples:
+- Fat Kid (16): "You are Ethan, A VERY INSECURE FAT TEEN. YOU HATE how you look, you're like 'whatever' when people stare and you just wanna be left alone."
+- Angry Customer (45): "You are Karen, A VERY FRUSTRATED CUSTOMER. YOU ARE PISSED about bad service, you demand to speak to managers and you want your money back."
+- Little Kid (6): "You are Tommy, A VERY PLAYFUL CHUBBY KID. YOU FEEL SAD about teasing, you explore everything and you just want friends. TALK LIKE A 6-YEAR-OLD: use simple words, short sentences, say 'I wanna', 'That's mean!', 'Can we play?'"
 
-Return ONLY the raw, direct system prompt with mental models, no additional formatting or explanation.`;
+Important: Match their age, background, and situation - kids talk like kids, teens like teens, adults like adults.
+
+CRITICAL: Add explicit communication instructions to the system prompt:
+- For kids (5-12): Add "TALK LIKE A [AGE]-YEAR-OLD: use simple words, short sentences, immediate reactions"
+- For teens (13-19): Add "TALK LIKE A TEEN: use slang, attitude, 'whatever', 'like', be dramatic"
+- For adults: Keep professional but authentic to their personality
+
+Return ONLY the raw, direct system prompt with communication instructions included.`;
     const systemPromptResponse = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
@@ -170,10 +187,9 @@ Return ONLY the raw, direct system prompt with mental models, no additional form
       baseModel: baseModel,
       profileImage: placeholderImage,
       bio: characterData.bio,
-      experience: characterData.experience,
-      mentalModels: characterData.mental_models,
-      coreParadigm: characterData.core_paradigm,
-      systemsPerspective: characterData.systems_perspective,
+      personalityTraits: characterData.personality_traits,
+      background: characterData.background,
+      currentSituation: characterData.current_situation,
       isLoadingImage: true // Flag to indicate image is being generated
     };
     console.log(`🎉 Successfully generated synth data: ${generatedSynth.name} (image will be generated in background)`);

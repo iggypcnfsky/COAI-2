@@ -323,14 +323,25 @@ if (import.meta.env.DEV && !SUPABASE_ANON_KEY) {
 }
 
 export async function streamChat(messages: any[], role: string, model: string, employeePrompt?: string, employeeName?: string, openaiApiKey?: string) {
+  console.log('🚀 [STREAM CHAT DEBUG] streamChat called');
+  console.log('🚀 [STREAM CHAT DEBUG] messages.length:', messages.length);
+  console.log('🚀 [STREAM CHAT DEBUG] role:', role);
+  console.log('🚀 [STREAM CHAT DEBUG] model:', model);
+  console.log('🚀 [STREAM CHAT DEBUG] employeeName:', employeeName);
+  console.log('🚀 [STREAM CHAT DEBUG] openaiApiKey length:', openaiApiKey?.length || 0);
+  
   try {
     if (!SUPABASE_ANON_KEY) {
+      console.error('🚀 [STREAM CHAT DEBUG] Supabase anon key missing');
       throw new Error('Supabase anon key is not configured');
     }
 
     if (!openaiApiKey) {
+      console.error('🚀 [STREAM CHAT DEBUG] OpenAI API key missing');
       throw new Error('OpenAI API key is required. Please enter your API key in the header.');
     }
+    
+    console.log('🚀 [STREAM CHAT DEBUG] Making fetch request to chat endpoint');
 
     const response = await fetch(`${SUPABASE_URL}/functions/v1/chat`, {
       method: 'POST',

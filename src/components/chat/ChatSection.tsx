@@ -5,6 +5,7 @@ import TeamMembersList from './TeamMembersList';
 import YourChatsSection from './YourChatsSection';
 import ChatMessage from './ChatMessage';
 import MessageInputWithMentions from './MessageInputWithMentions';
+import ThinkingSpinner from './ThinkingSpinner';
 import { Loader2 } from 'lucide-react';
 import { useMessages } from '@/hooks/store/useMessages';
 
@@ -456,10 +457,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
               ))}
               {isWaitingForStream && (
                 <div className="flex justify-center mb-4">
-                  <div className="flex items-center space-x-2 text-neutral-500 dark:text-neutral-400">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span className="text-sm">AI team is thinking...</span>
-                  </div>
+                  <ThinkingSpinner size={24} />
                 </div>
               )}
               {isMessagesLoading && (

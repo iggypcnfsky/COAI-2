@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Users, Bot, FileText, Plus, PanelLeftClose } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -13,7 +13,7 @@ import CreateSynthModal from './CreateSynthModal';
 import EditSynthModal from './EditSynthModal';
 import CreateTeamModal, { CustomTeam } from './CreateTeamModal';
 import { AIEmployee } from '@/types';
-import { generateAISynth, generateAITeam, generateSynthImage } from '@/lib/api-utils';
+import { generateAISynth, generateAITeam } from '@/lib/api-utils';
 import { useAuth } from '@/hooks/store/useAuth';
 
 interface BrowserPanelProps {
@@ -107,8 +107,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
     isLoadingImage?: boolean;
   }
 
-  // Track synths currently having images generated (to avoid duplicates)
-  const [generatingImages, setGeneratingImages] = useState<Set<string>>(new Set());
+
 
   const handleCreateSynth = () => {
     setIsCreateSynthModalOpen(true);
@@ -238,7 +237,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
       });
       
       // Add the new synth immediately with placeholder image
-      console.log('➕ Adding new synth to parent (with placeholder image)');
+      console.log('🔍 [DUPLICATE DEBUG] BrowserPanel calling onAddNewSynth with:', { id: newSynth.id, name: newSynth.name, isLoadingImage: newSynth.isLoadingImage });
       onAddNewSynth(newSynth);
       
       console.log('✅ AI Synth creation completed (fast path) - background image will be generated automatically');
@@ -407,68 +406,6 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
   const handleCancelTeamGeneration = (loadingId: string) => {
     setLoadingTeams(prev => prev.filter(lt => lt.id !== loadingId));
   };
-
-
-
-
-
-  // Effect to handle background image generation for synths with isLoadingImage = true
-  useEffect(() => {
-    const synthsNeedingImages = customSynths.filter(synth => synth.isLoadingImage);
-    
-    // Debug logging removed to reduce console noise
-    
-    synthsNeedingImages.forEach(async (synth) => {
-      // Check if we're already processing this synth
-      const synthKey = `${synth.name}-${synth.role}`;
-      
-      if (!generatingImages.has(synthKey)) {
-        console.log('🎨 Starting background image generation for saved synth:', synth.name);
-        
-        // Mark as generating
-        setGeneratingImages(prev => new Set([...prev, synthKey]));
-        
-        try {
-          const realProfileImage = await generateSynthImage({
-            name: synth.name,
-            age: synth.age,
-            role: synth.role,
-            bio: synth.bio,
-            systemPrompt: synth.systemPrompt,
-            baseModel: synth.baseModel,
-            profileImage: synth.profileImage, // Current placeholder
-          });
-          
-          // Update the synth with the real image
-          const updatedSynth: AIEmployee = {
-            ...synth,
-            profileImage: realProfileImage,
-            isLoadingImage: false,
-          };
-          
-          console.log('✅ Background image completed for:', synth.name);
-          onEditSynth(updatedSynth);
-          
-        } catch (imageError) {
-          console.error('⚠️ Background image generation failed for:', synth.name, imageError);
-          
-          // Remove loading state even if image generation failed
-          const updatedSynth: AIEmployee = {
-            ...synth,
-            isLoadingImage: false,
-          };
-          onEditSynth(updatedSynth);
-        } finally {
-          // Remove from generating set
-          setGeneratingImages(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(synthKey);
-            return newSet;
-          });
-        }
-      }
-    });
-  }, [customSynths, generatingImages, onEditSynth]);
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800">

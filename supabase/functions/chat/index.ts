@@ -7,6 +7,92 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400'
 };
 const SYSTEM_PROMPT = `You are a team member.`;
+
+// Token estimation and context window management utilities
+function estimateTokens(text: string): number {
+  if (!text) return 0;
+  
+  const baseTokens = Math.ceil(text.length / 4);
+  const overhead = Math.ceil(baseTokens * 0.1); // 10% overhead
+  
+  return baseTokens + overhead;
+}
+
+function estimateMessageTokens(message: { role: string; content: string | any; image?: any }): number {
+  let tokens = 0;
+  
+  // Handle content that might be an array (for vision models)
+  const contentText = Array.isArray(message.content) 
+    ? message.content.filter(c => c.type === 'text').map(c => c.text).join(' ')
+    : message.content;
+  
+  tokens += estimateTokens(contentText);
+  tokens += estimateTokens(message.role);
+  
+  // Image tokens
+  if (message.image || (Array.isArray(message.content) && message.content.some(c => c.type === 'image_url'))) {
+    tokens += 800; // Rough estimate for images
+  }
+  
+  tokens += 10; // Message structure overhead
+  
+  return tokens;
+}
+
+function trimMessagesToTokenLimit(
+  messages: Array<{ role: string; content: string | any; image?: any }>,
+  maxTokens: number = 40000,
+  systemPromptTokens: number = 2000
+): Array<{ role: string; content: string | any; image?: any }> {
+  if (messages.length === 0) return messages;
+  
+  const availableTokens = maxTokens - systemPromptTokens;
+  let currentTokens = 0;
+  const trimmedMessages: Array<{ role: string; content: string | any; image?: any }> = [];
+  
+  // Start from the most recent message and work backwards
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    const messageTokens = estimateMessageTokens(message);
+    
+    if (currentTokens + messageTokens > availableTokens) {
+      break;
+    }
+    
+    currentTokens += messageTokens;
+    trimmedMessages.unshift(message);
+  }
+  
+  // Always include at least the last message
+  if (trimmedMessages.length === 0 && messages.length > 0) {
+    trimmedMessages.push(messages[messages.length - 1]);
+  }
+  
+  return trimmedMessages;
+}
+
+function getContextInfo(
+  messages: Array<{ role: string; content: string | any; image?: any }>,
+  maxTokens: number = 40000,
+  systemPromptTokens: number = 2000
+) {
+  const totalTokens = messages.reduce((total, msg) => total + estimateMessageTokens(msg), 0);
+  const availableTokens = maxTokens - systemPromptTokens;
+  const trimmedMessages = trimMessagesToTokenLimit(messages, maxTokens, systemPromptTokens);
+  const trimmedTokens = trimmedMessages.reduce((total, msg) => total + estimateMessageTokens(msg), 0);
+  
+  return {
+    originalMessageCount: messages.length,
+    trimmedMessageCount: trimmedMessages.length,
+    messagesRemoved: messages.length - trimmedMessages.length,
+    originalTokens: totalTokens,
+    trimmedTokens: trimmedTokens,
+    systemPromptTokens,
+    maxTokens,
+    availableTokens,
+    utilizationPercent: Math.round((trimmedTokens / availableTokens) * 100)
+  };
+}
 Deno.serve(async (req)=>{
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -122,42 +208,37 @@ Deno.serve(async (req)=>{
     console.log(`🔍 [DEBUG] [${role}] Found ${aiResponsesAfterLatestUser.length} AI responses after latest user message`);
     console.log(`🔍 [DEBUG] [${role}] Latest user message: "${latestUserMessage?.content?.substring(0, 100)}..."`);
     console.log(`🔍 [DEBUG] [${role}] AI responses found:`, aiResponsesAfterLatestUser.map((msg, i)=>`${i + 1}. "${msg.content.substring(0, 50)}..."`));
-    // Check if we received an enhanced prompt from frontend conversation analyzer
-    const hasEnhancedPrompt = employeePrompt && employeePrompt.includes('CONVERSATION ANALYSIS:');
-    
-    // If frontend sent enhanced prompt, use it as-is. Otherwise, add minimal backend context
-    let contextualPrompt = '';
-    
-    if (!hasEnhancedPrompt && aiResponsesAfterLatestUser.length > 0) {
-      // Only add basic context if frontend didn't already analyze the conversation
-      const latestMessage = latestUserMessage?.content || '';
-      const isDirectlyMentioned = employeeName && latestMessage.toLowerCase().includes(`@${employeeName.toLowerCase()}`);
-      
-      contextualPrompt = `\n\nCONTEXT: ${aiResponsesAfterLatestUser.length} team member(s) already responded. ${isDirectlyMentioned ? 'You were mentioned directly.' : 'Add your unique perspective.'} Speak as ${employeeName || role}.`;
-    }
-    // Build the final system message - prioritize employee's personality prompt
-    const userAddressingInstruction = '\n\nIMPORTANT: Always address the user as "Boss" when speaking to them directly. Never use other team member names when addressing the user.';
-    
-    const teamCollaborationInstruction = '\n\nTEAM COLLABORATION:\n- If you see that other team members have already responded in this conversation, acknowledge their input and build on it.\n- Reference what others have said when relevant: "I agree with [Name]\'s point about..." or "Building on what [Name] mentioned..."\n- Add your unique perspective rather than repeating what\'s already been said.\n- Create a natural team discussion where ideas flow and build upon each other.';
-    
+    // Build the final system message - use employee prompt as-is without artificial additions
     const systemMessage = {
       role: 'system',
-      content: employeePrompt 
-        ? `${employeePrompt}${contextualPrompt ? '\n\n' + contextualPrompt : ''}${userAddressingInstruction}${teamCollaborationInstruction}` // Employee prompt first, then context, then instructions
-        : `${SYSTEM_PROMPT}${contextualPrompt}\n\nYou are a ${role}.${userAddressingInstruction}${teamCollaborationInstruction}` // Fallback for missing employee prompts
+      content: employeePrompt || `${SYSTEM_PROMPT}\n\nYou are a ${role}.`
     };
     // DEBUG: Log the final system prompt being used
     console.log(`[DEBUG] Final system prompt for ${role}:`, systemMessage.content.substring(0, 300) + '...');
     console.log(`[DEBUG] Using employeePrompt: ${employeePrompt ? 'YES' : 'NO'}`);
-    // ENHANCED DEBUG: Show the construction logic
     console.log(`[DEBUG] System prompt construction:`);
-    console.log(`[DEBUG] - contextualPrompt length: ${contextualPrompt.length}`);
     console.log(`[DEBUG] - employeePrompt exists: ${!!employeePrompt}`);
     console.log(`[DEBUG] - Final system message length: ${systemMessage.content.length}`);
     console.log(`[DEBUG] - Full system prompt (first 1000 chars): "${systemMessage.content.substring(0, 1000)}..."`);
     
+    // 🎯 CONTEXT WINDOW MANAGEMENT: Trim messages to fit within token limits
+    const originalMessages = [...messages];
+    const trimmedMessages = trimMessagesToTokenLimit(messages, 40000, 2000);
+    
+    // 🔍 DEBUG: Log context window optimization
+    const contextInfo = getContextInfo(originalMessages, 40000, 2000);
+    console.log(`🎯 [EDGE FUNCTION - CONTEXT WINDOW] Optimized chat history for ${employeeName}:`, {
+      originalMessages: contextInfo.originalMessageCount,
+      trimmedMessages: contextInfo.trimmedMessageCount,
+      messagesRemoved: contextInfo.messagesRemoved,
+      originalTokens: contextInfo.originalTokens,
+      trimmedTokens: contextInfo.trimmedTokens,
+      utilization: `${contextInfo.utilizationPercent}%`,
+      maxTokens: contextInfo.maxTokens
+    });
+
     // Transform messages to include image data for vision models
-    const transformedMessages = messages.map((msg, index) => {
+    const transformedMessages = trimmedMessages.map((msg, index) => {
       if (msg.image && msg.image.base64) {
         console.log(`🖼️ [DEBUG] [${role}] Transforming message ${index + 1} with image:`, {
           hasImage: !!msg.image,

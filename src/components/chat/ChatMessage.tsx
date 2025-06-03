@@ -59,10 +59,37 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isDemo = false, empl
   };
 
   const renderMessageContent = () => {
+    // Strip name prefix from AI messages for display (e.g., "[Jake Turnbull]: message" -> "message")
+    // This keeps the names in chat history for AI context but removes them from UI display
+    let displayContent = message.content;
+    
+    if (!isUserMessage && displayContent && message.aiEmployee) {
+      // More aggressive name stripping - remove any name prefix that matches the AI's name
+      const aiName = message.aiEmployee.name;
+      
+      // Try multiple patterns in order of specificity
+      const patterns = [
+        new RegExp(`^\\[${aiName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]:\\s*`, 'i'),  // [Exact Name]: 
+        new RegExp(`^\\[([^\\]]*${aiName.split(' ')[0]}[^\\]]*)\\]:\\s*`, 'i'),           // [Name with variations]: 
+        new RegExp(`^${aiName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*`, 'i'),        // Exact Name: 
+        new RegExp(`^([^:]*${aiName.split(' ')[0]}[^:]*):\\s*`, 'i'),                    // Name variations: 
+        /^\[([^\]]+)\]:\s*/,                                                              // Any [Name]: 
+      ];
+      
+      for (const pattern of patterns) {
+        const match = displayContent.match(pattern);
+        if (match) {
+          console.log(`🔍 DEBUG: Stripping name prefix "${match[0]}" from message for ${aiName}`);
+          displayContent = displayContent.replace(match[0], '').trim();
+          break; // Only apply the first matching pattern
+        }
+      }
+    }
+    
     // Use markdown rendering for both AI and user messages
     return (
       <MarkdownRenderer 
-        content={message.content} 
+        content={displayContent} 
         employees={employees}
       />
     );
