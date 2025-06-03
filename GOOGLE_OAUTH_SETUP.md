@@ -38,7 +38,6 @@ This guide will help you configure Google OAuth authentication for the COAI appl
    - Authorized redirect URIs:
      ```
      https://hiuinnexazfqhodamhgk.supabase.co/auth/v1/callback
-     http://localhost:5173/auth/callback
      ```
 
 5. **Save the Client ID and Client Secret** - you'll need these for Supabase

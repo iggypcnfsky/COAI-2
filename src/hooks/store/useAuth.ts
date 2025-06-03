@@ -262,6 +262,12 @@ export function useAuth(): AuthHookResult {
         
         if (session.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
           loadProfileIfNeeded(session.user.id);
+          
+          // Clean up URL hash after successful OAuth sign-in
+          if (event === 'SIGNED_IN' && window.location.hash.includes('access_token')) {
+            // Remove auth tokens from URL for better UX
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
         }
       }
       
