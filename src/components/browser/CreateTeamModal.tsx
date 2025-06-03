@@ -29,6 +29,7 @@ interface CreateTeamModalProps {
     teamType: string; 
     averageAge: number; 
     genderDistribution: { male: number; female: number; nonBinary: number; };
+    baseModel: string;
     existingSynths?: any[]; 
   }) => void;
 }
@@ -91,7 +92,7 @@ const CreateTeamModal: React.FC<CreateTeamModalProps> = ({
   const [includeExistingSynths, setIncludeExistingSynths] = useState(false);
   const [teamType, setTeamType] = useState<'team' | 'group'>('team');
   const [averageAge, setAverageAge] = useState(35);
-  const [aiBaseModel, setAiBaseModel] = useState('gpt-4o');
+  const [aiBaseModel, setAiBaseModel] = useState('claude-3-5-sonnet');
   
   // Gender distribution state (percentages that must add up to 100)
   const [genderDistribution, setGenderDistribution] = useState({
@@ -203,6 +204,7 @@ const CreateTeamModal: React.FC<CreateTeamModalProps> = ({
         teamType: teamType,
         averageAge: averageAge,
         genderDistribution: genderDistribution,
+        baseModel: aiBaseModel,
         existingSynths: includeExistingSynths ? customSynths : [],
       });
       handleClose(); // Close modal immediately
@@ -336,7 +338,7 @@ const CreateTeamModal: React.FC<CreateTeamModalProps> = ({
     setTeamType('team');
     setActiveTab('ai');
     setAverageAge(35);
-    setAiBaseModel('gpt-4o');
+    setAiBaseModel('claude-3-5-sonnet');
     setGenderDistribution({ male: 50, female: 50, nonBinary: 0 });
     setIsPublic(true);
     onClose();

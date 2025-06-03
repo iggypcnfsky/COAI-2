@@ -115,7 +115,7 @@ Deno.serve(async (req)=>{
   }
   try {
     // Extract request data
-    const { keywords, teamSize = 3, useExistingSynths = false, existingSynths = [], baseModel = 'gpt-4o', teamType = 'team', averageAge = 35, genderDistribution = { male: 50, female: 50, nonBinary: 0 }, openaiApiKey, anthropicApiKey, perplexityApiKey } = await req.json();
+    const { keywords, teamSize = 3, useExistingSynths = false, existingSynths = [], baseModel = 'claude-3-5-sonnet', teamType = 'team', averageAge = 35, genderDistribution = { male: 50, female: 50, nonBinary: 0 }, openaiApiKey, anthropicApiKey, perplexityApiKey } = await req.json();
     console.log(`🎯 Creating AI ${teamType}: "${keywords}" with ${teamSize} members (avg age: ${averageAge}, gender dist: ${genderDistribution.male}%M/${genderDistribution.female}%F/${genderDistribution.nonBinary}%NB)`);
     
     // Determine which provider to use based on the model

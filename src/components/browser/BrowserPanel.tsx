@@ -95,6 +95,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
     teamType: string;
     averageAge: number;
     genderDistribution: { male: number; female: number; nonBinary: number; };
+    baseModel: string;
     existingSynths?: any[];
     startTime: number;
   }
@@ -279,7 +280,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
     setLoadingSynths(prev => prev.filter(ls => ls.id !== loadingId));
   };
 
-  const handleTeamGenerationStart = (generationData: { keywords: string; teamSize: number; includeExistingSynths: boolean; teamType: string; averageAge: number; genderDistribution: { male: number; female: number; nonBinary: number; }; existingSynths?: any[]; }) => {
+  const handleTeamGenerationStart = (generationData: { keywords: string; teamSize: number; includeExistingSynths: boolean; teamType: string; averageAge: number; genderDistribution: { male: number; female: number; nonBinary: number; }; baseModel: string; existingSynths?: any[]; }) => {
     console.log('🚀 Team generation started with data:', generationData);
     
     const loadingId = `loading-team-${Date.now()}`;
@@ -291,6 +292,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
       teamType: generationData.teamType,
       averageAge: generationData.averageAge,
       genderDistribution: generationData.genderDistribution,
+      baseModel: generationData.baseModel,
       existingSynths: generationData.existingSynths,
       startTime: Date.now(),
     };
@@ -321,7 +323,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
         teamSize: loadingTeam.teamSize,
         useExistingSynths: loadingTeam.includeExistingSynths,
         existingSynths: loadingTeam.existingSynths || [],
-        baseModel: 'gpt-4o',
+        baseModel: loadingTeam.baseModel,
         teamType: loadingTeam.teamType as 'team' | 'group',
         averageAge: loadingTeam.averageAge,
         genderDistribution: loadingTeam.genderDistribution,

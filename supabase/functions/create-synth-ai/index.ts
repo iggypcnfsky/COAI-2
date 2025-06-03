@@ -59,7 +59,7 @@ Deno.serve(async (req)=>{
   }
   try {
     const requestBody = await req.json();
-    const { keywords, openaiApiKey, anthropicApiKey, perplexityApiKey, baseModel = 'gpt-4o', averageAge = 35, gender = 'any' } = requestBody;
+    const { keywords, openaiApiKey, anthropicApiKey, perplexityApiKey, baseModel = 'claude-3-5-sonnet', averageAge = 35, gender = 'any' } = requestBody;
     
     console.log('🔍 [DEBUG] Extracted parameters:', {
       keywords,

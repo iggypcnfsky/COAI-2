@@ -58,7 +58,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
 
   // AI form state
   const [aiKeywords, setAiKeywords] = useState('');
-  const [aiBaseModel, setAiBaseModel] = useState('gpt-4o');
+  const [aiBaseModel, setAiBaseModel] = useState('claude-3-5-sonnet');
   const [averageAge, setAverageAge] = useState(35);
   const [gender, setGender] = useState('any');
 
@@ -184,7 +184,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
     });
     setImagePreview('');
     setAiKeywords('');
-    setAiBaseModel('gpt-4o');
+    setAiBaseModel('claude-3-5-sonnet');
     setAverageAge(35);
     setGender('any');
     setGeneratedSynth(null);
