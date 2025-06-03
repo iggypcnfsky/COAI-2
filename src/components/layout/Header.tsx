@@ -4,11 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useApiKey } from '@/hooks/store/useApiKey';
 import { useAuth } from '@/hooks/store/useAuth';
-import { Key, Check, LogIn, LogOut, PanelLeftOpen, Image } from 'lucide-react';
+import { Key, Check, LogIn, LogOut, PanelLeftOpen, Image, Brain, Search } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import Logo from '@/components/Logo';
 import { getRunwareApiKey, setRunwareApiKey, hasRunwareApiKey } from '@/lib/api-utils';
 import { supabase } from '@/lib/supabase';
+import { useAppStore } from '@/stores/appStore';
 
 interface HeaderProps {
   isBrowserCollapsed: boolean;
@@ -26,9 +27,14 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, is
     signOut,
     refreshProfile
   } = useAuth();
+  const { tempApiKeys, setTempApiKey: setStoreApiKey } = useAppStore();
+  
   const [tempApiKey, setTempApiKey] = useState(openaiApiKey);
   const [tempRunwareApiKey, setTempRunwareApiKey] = useState(getRunwareApiKey() || '');
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [tempAnthropicApiKey, setTempAnthropicApiKey] = useState(tempApiKeys.anthropic || '');
+  const [tempPerplexityApiKey, setTempPerplexityApiKey] = useState(tempApiKeys.perplexity || '');
+  const [isDesktopModalOpen, setIsDesktopModalOpen] = useState(false);
+  const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
   const [signOutLoading, setSignOutLoading] = useState(false);
   const [authInitialized, setAuthInitialized] = useState(false);
 
@@ -82,7 +88,14 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, is
     if (tempRunwareApiKey.trim()) {
       setRunwareApiKey(tempRunwareApiKey);
     }
-    setIsModalOpen(false);
+    if (tempAnthropicApiKey.trim()) {
+      setStoreApiKey('anthropic', tempAnthropicApiKey);
+    }
+    if (tempPerplexityApiKey.trim()) {
+      setStoreApiKey('perplexity', tempPerplexityApiKey);
+    }
+    setIsDesktopModalOpen(false);
+    setIsMobileModalOpen(false);
   };
 
   const handleGoogleSignIn = async () => {
@@ -157,7 +170,9 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, is
   React.useEffect(() => {
     setTempApiKey(openaiApiKey);
     setTempRunwareApiKey(getRunwareApiKey() || '');
-  }, [openaiApiKey]);
+    setTempAnthropicApiKey(tempApiKeys.anthropic || '');
+    setTempPerplexityApiKey(tempApiKeys.perplexity || '');
+  }, [openaiApiKey, tempApiKeys.anthropic, tempApiKeys.perplexity]);
 
   // Get user display information with fallbacks
   const getUserDisplayInfo = () => {
@@ -206,8 +221,13 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, is
   // Use authInitialized as a failsafe - if auth hasn't loaded in 5 seconds, allow interaction
   const isAuthLoading = loading && !authInitialized;
 
-  // Check if Runware API key is valid
+  // Check if API keys are valid
   const isRunwareApiKeyValid = hasRunwareApiKey();
+  const hasAnthropicApiKey = !!(tempApiKeys.anthropic && tempApiKeys.anthropic.trim().length > 0);
+  const hasPerplexityApiKey = !!(tempApiKeys.perplexity && tempApiKeys.perplexity.trim().length > 0);
+  
+  // Check if at least one AI provider key is set (OpenAI, Anthropic, or Perplexity)
+  const hasAnyAiApiKey = isApiKeyValid || hasAnthropicApiKey || hasPerplexityApiKey;
 
   // Debug info (can be removed later)
   React.useEffect(() => {
@@ -266,18 +286,18 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, is
       {/* Desktop API Button, Auth and Clear Chat */}
       <div className="hidden md:flex flex-row space-x-2 items-center">
         {/* API Keys Button */}
-        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <Dialog open={isDesktopModalOpen} onOpenChange={setIsDesktopModalOpen}>
           <DialogTrigger asChild>
             <Button 
-              variant={isApiKeyValid && isRunwareApiKeyValid ? "outline" : "default"}
+              variant={hasAnyAiApiKey && isRunwareApiKeyValid ? "outline" : "default"}
               className={`flex items-center gap-2 ${
-                isApiKeyValid && isRunwareApiKeyValid
+                hasAnyAiApiKey && isRunwareApiKeyValid
                   ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/30' 
                   : 'bg-orange-600 hover:bg-orange-700 text-white'
               }`}
             >
               <Key className="h-4 w-4" />
-              {isApiKeyValid && isRunwareApiKeyValid ? (
+              {hasAnyAiApiKey && isRunwareApiKeyValid ? (
                 <>
                   <Check className="h-4 w-4" />
                   API Keys Set
@@ -312,6 +332,42 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, is
                 </p>
               </div>
               
+              {/* Anthropic API Key */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Brain className="h-4 w-4" />
+                  <span className="text-sm font-medium">Anthropic API Key</span>
+                </div>
+                <Input
+                  type="password"
+                  placeholder="Your Anthropic API Key"
+                  value={tempAnthropicApiKey}
+                  onChange={(e) => setTempAnthropicApiKey(e.target.value)}
+                  className="bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700"
+                />
+                <p className="text-xs text-neutral-500">
+                  Required for Claude models (claude-3-5-sonnet, claude-4-sonnet, claude-4-opus)
+                </p>
+              </div>
+              
+              {/* Perplexity API Key */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Search className="h-4 w-4" />
+                  <span className="text-sm font-medium">Perplexity API Key</span>
+                </div>
+                <Input
+                  type="password"
+                  placeholder="Your Perplexity API Key"
+                  value={tempPerplexityApiKey}
+                  onChange={(e) => setTempPerplexityApiKey(e.target.value)}
+                  className="bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700"
+                />
+                <p className="text-xs text-neutral-500">
+                  Required for Perplexity models (sonar, sonar-pro, sonar-reasoning, sonar-reasoning-pro)
+                </p>
+              </div>
+
               {/* Runware API Key */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -335,16 +391,21 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, is
               <div className="flex justify-end space-x-2 pt-4 border-t">
                 <Button 
                   variant="outline" 
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => setIsDesktopModalOpen(false)}
                 >
                   Cancel
                 </Button>
                 <Button 
                   onClick={handleSaveApiKey}
-                  disabled={tempApiKey === openaiApiKey && tempRunwareApiKey === (getRunwareApiKey() || '')}
+                  disabled={
+                    tempApiKey === openaiApiKey && 
+                    tempRunwareApiKey === (getRunwareApiKey() || '') &&
+                    tempAnthropicApiKey === (tempApiKeys.anthropic || '') &&
+                    tempPerplexityApiKey === (tempApiKeys.perplexity || '')
+                  }
                   className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
                 >
-                  {isApiKeyValid && isRunwareApiKeyValid ? 'Update' : 'Save'}
+                  {hasAnyAiApiKey && isRunwareApiKeyValid ? 'Update' : 'Save'}
                 </Button>
               </div>
             </div>
@@ -399,19 +460,19 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, is
 
       {/* Mobile API Key Button and Auth */}
       <div className="md:hidden flex items-center space-x-2">
-        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <Dialog open={isMobileModalOpen} onOpenChange={setIsMobileModalOpen}>
           <DialogTrigger asChild>
             <Button 
-              variant={isApiKeyValid && isRunwareApiKeyValid ? "outline" : "default"}
+              variant={hasAnyAiApiKey && isRunwareApiKeyValid ? "outline" : "default"}
               size="sm"
               className={`h-6 px-2 text-xs ${
-                isApiKeyValid && isRunwareApiKeyValid
+                hasAnyAiApiKey && isRunwareApiKeyValid
                   ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/30' 
                   : 'bg-orange-600 hover:bg-orange-700 text-white'
               }`}
             >
               <Key className="h-3 w-3 mr-1" />
-              {isApiKeyValid && isRunwareApiKeyValid ? (
+              {hasAnyAiApiKey && isRunwareApiKeyValid ? (
                 <>
                   <Check className="h-3 w-3 mr-1" />
                   <span className="hidden xs:inline">API Keys Set</span>
@@ -447,6 +508,36 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, is
                 />
               </div>
               
+              {/* Anthropic API Key */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Brain className="h-4 w-4" />
+                  <span className="text-sm font-medium">Anthropic API Key</span>
+                </div>
+                <Input
+                  type="password"
+                  placeholder="Your Anthropic API Key"
+                  value={tempAnthropicApiKey}
+                  onChange={(e) => setTempAnthropicApiKey(e.target.value)}
+                  className="bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700"
+                />
+              </div>
+              
+              {/* Perplexity API Key */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Search className="h-4 w-4" />
+                  <span className="text-sm font-medium">Perplexity API Key</span>
+                </div>
+                <Input
+                  type="password"
+                  placeholder="Your Perplexity API Key"
+                  value={tempPerplexityApiKey}
+                  onChange={(e) => setTempPerplexityApiKey(e.target.value)}
+                  className="bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700"
+                />
+              </div>
+
               {/* Runware API Key */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -514,16 +605,21 @@ const Header: React.FC<HeaderProps> = ({ isBrowserCollapsed, onToggleBrowser, is
               <div className="flex justify-end space-x-2 pt-4 border-t">
                 <Button 
                   variant="outline" 
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => setIsMobileModalOpen(false)}
                 >
                   Cancel
                 </Button>
                 <Button 
                   onClick={handleSaveApiKey}
-                  disabled={tempApiKey === openaiApiKey && tempRunwareApiKey === (getRunwareApiKey() || '')}
+                  disabled={
+                    tempApiKey === openaiApiKey && 
+                    tempRunwareApiKey === (getRunwareApiKey() || '') &&
+                    tempAnthropicApiKey === (tempApiKeys.anthropic || '') &&
+                    tempPerplexityApiKey === (tempApiKeys.perplexity || '')
+                  }
                   className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
                 >
-                  {isApiKeyValid && isRunwareApiKeyValid ? 'Update' : 'Save'}
+                  {hasAnyAiApiKey && isRunwareApiKeyValid ? 'Update' : 'Save'}
                 </Button>
               </div>
             </div>

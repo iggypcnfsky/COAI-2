@@ -285,6 +285,13 @@ const EditSynthModal: React.FC<EditSynthModalProps> = ({
                 <SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
                 <SelectItem value="gpt-4o">GPT-4o</SelectItem>
                 <SelectItem value="chatgpt-4o-latest">ChatGPT-4o Latest</SelectItem>
+                <SelectItem value="claude-3-5-sonnet">Claude 3.5 Sonnet</SelectItem>
+                <SelectItem value="claude-4-sonnet">Claude 4 Sonnet</SelectItem>
+                <SelectItem value="claude-4-opus">Claude 4 Opus</SelectItem>
+                <SelectItem value="sonar">Perplexity Sonar</SelectItem>
+                <SelectItem value="sonar-pro">Perplexity Sonar Pro</SelectItem>
+                <SelectItem value="sonar-reasoning">Perplexity Sonar Reasoning</SelectItem>
+                <SelectItem value="sonar-reasoning-pro">Perplexity Sonar Reasoning Pro</SelectItem>
               </SelectContent>
             </Select>
           </div>

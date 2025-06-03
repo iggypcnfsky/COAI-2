@@ -1,4 +1,6 @@
 import OpenAI from 'npm:openai@4.28.0';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.24.3';
+
 // CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,6 +8,36 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
   'Access-Control-Max-Age': '86400'
 };
+
+// Model provider mapping
+const MODEL_PROVIDERS = {
+  // OpenAI models
+  'gpt-4.1-nano': 'openai',
+  'o4-mini': 'openai',
+  'o3': 'openai',
+  'o1': 'openai',
+  'gpt-4.1': 'openai',
+  'gpt-4o': 'openai',
+  'chatgpt-4o-latest': 'openai',
+  
+  // Anthropic Claude models
+  'claude-3-5-sonnet': 'anthropic',
+  'claude-4-sonnet': 'anthropic',
+  'claude-4-opus': 'anthropic',
+  
+  // Perplexity models
+  'sonar': 'perplexity',
+  'sonar-pro': 'perplexity',
+  'sonar-reasoning': 'perplexity',
+  'sonar-reasoning-pro': 'perplexity',
+} as const;
+
+// Anthropic model name mapping
+const ANTHROPIC_MODEL_MAP = {
+  'claude-3-5-sonnet': 'claude-3-5-sonnet-20241022',
+  'claude-4-sonnet': 'claude-sonnet-4-20250514',
+  'claude-4-opus': 'claude-opus-4-20250514',
+} as const;
 // Helper function to clean markdown-formatted JSON responses
 const cleanJsonResponse = (content)=>{
   if (!content) return '{}';
@@ -26,21 +58,105 @@ Deno.serve(async (req)=>{
     });
   }
   try {
-    const { keywords, openaiApiKey, baseModel = 'gpt-4o', averageAge = 35, gender = 'any' } = await req.json();
-    if (!openaiApiKey) {
-      return new Response(JSON.stringify({
-        error: 'OpenAI API key is required'
-      }), {
-        status: 400,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
-    }
-    const openai = new OpenAI({
-      apiKey: openaiApiKey
+    const requestBody = await req.json();
+    const { keywords, openaiApiKey, anthropicApiKey, perplexityApiKey, baseModel = 'gpt-4o', averageAge = 35, gender = 'any' } = requestBody;
+    
+    console.log('🔍 [DEBUG] Extracted parameters:', {
+      keywords,
+      baseModel,
+      averageAge,
+      gender,
+      hasOpenaiApiKey: !!openaiApiKey,
+      hasAnthropicApiKey: !!anthropicApiKey,
+      hasPerplexityApiKey: !!perplexityApiKey
     });
+    
+    // Determine which provider to use based on the model
+    const provider = MODEL_PROVIDERS[baseModel as keyof typeof MODEL_PROVIDERS] || 'openai';
+    
+    // Validate API key for the required provider
+    let apiKey: string;
+    switch (provider) {
+      case 'openai':
+        if (!openaiApiKey) {
+          return new Response(JSON.stringify({
+            error: 'OpenAI API key is required for this model'
+          }), {
+            status: 400,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            }
+          });
+        }
+        apiKey = openaiApiKey;
+        break;
+      case 'anthropic':
+        if (!anthropicApiKey) {
+          return new Response(JSON.stringify({
+            error: 'Anthropic API key is required for Claude models'
+          }), {
+            status: 400,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            }
+          });
+        }
+        apiKey = anthropicApiKey;
+        break;
+      case 'perplexity':
+        if (!perplexityApiKey) {
+          return new Response(JSON.stringify({
+            error: 'Perplexity API key is required for Sonar models'
+          }), {
+            status: 400,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            }
+          });
+        }
+        apiKey = perplexityApiKey;
+        break;
+      default:
+        return new Response(JSON.stringify({
+          error: `Unsupported provider: ${provider}`
+        }), {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
+    }
+    
+    // Initialize the appropriate client
+    let client: any;
+    switch (provider) {
+      case 'openai':
+        client = new OpenAI({
+          apiKey: apiKey
+        });
+        break;
+      case 'anthropic':
+        client = new Anthropic({
+          apiKey: apiKey
+        });
+        break;
+      case 'perplexity':
+        client = new OpenAI({
+          apiKey: apiKey,
+          baseURL: 'https://api.perplexity.ai'
+        });
+        break;
+    }
+    
+    // Map model names for different providers
+    let actualModel = baseModel;
+    if (provider === 'anthropic') {
+      actualModel = ANTHROPIC_MODEL_MAP[baseModel as keyof typeof ANTHROPIC_MODEL_MAP] || baseModel;
+    }
     // Fast synth creation flow (with placeholder image)
     if (!keywords || keywords.trim().length === 0) {
       return new Response(JSON.stringify({
@@ -108,17 +224,41 @@ CRITICAL:
 - Focus on creating an authentic character that EMBODIES the keywords directly
 
 Return only the JSON object, nothing else.`;
-    const characterResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: characterPrompt
-        }
-      ],
-      temperature: 0.8
-    });
-    const rawCharacterData = characterResponse.choices[0].message.content || '{}';
+    // Create character response based on provider
+    let characterResponse: any;
+    if (provider === 'anthropic') {
+      characterResponse = await client.messages.create({
+        model: actualModel,
+        max_tokens: 4000,
+        messages: [
+          {
+            role: 'user',
+            content: characterPrompt
+          }
+        ],
+        temperature: 0.8
+      });
+    } else {
+      // OpenAI and Perplexity
+      characterResponse = await client.chat.completions.create({
+        model: actualModel,
+        messages: [
+          {
+            role: 'user',
+            content: characterPrompt
+          }
+        ],
+        temperature: 0.8
+      });
+    }
+    // Extract content based on provider
+    let rawCharacterData: string;
+    if (provider === 'anthropic') {
+      rawCharacterData = characterResponse.content[0]?.text || '{}';
+    } else {
+      rawCharacterData = characterResponse.choices[0].message.content || '{}';
+    }
+    
     console.log(`🔍 Raw character response: ${rawCharacterData.substring(0, 200)}...`);
     const cleanedCharacterData = cleanJsonResponse(rawCharacterData);
     console.log(`🧹 Cleaned character response: ${cleanedCharacterData.substring(0, 200)}...`);
@@ -172,17 +312,41 @@ CRITICAL: Add explicit communication instructions to the system prompt:
 - For adults: Keep professional but authentic to their personality
 
 Return ONLY the raw, direct system prompt with communication instructions included.`;
-    const systemPromptResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: systemPromptRequest
-        }
-      ],
-      temperature: 0.7
-    });
-    const systemPrompt = systemPromptResponse.choices[0].message.content || '';
+    // Create system prompt response based on provider
+    let systemPromptResponse: any;
+    if (provider === 'anthropic') {
+      systemPromptResponse = await client.messages.create({
+        model: actualModel,
+        max_tokens: 4000,
+        messages: [
+          {
+            role: 'user',
+            content: systemPromptRequest
+          }
+        ],
+        temperature: 0.7
+      });
+    } else {
+      // OpenAI and Perplexity
+      systemPromptResponse = await client.chat.completions.create({
+        model: actualModel,
+        messages: [
+          {
+            role: 'user',
+            content: systemPromptRequest
+          }
+        ],
+        temperature: 0.7
+      });
+    }
+    
+    // Extract system prompt content based on provider
+    let systemPrompt: string;
+    if (provider === 'anthropic') {
+      systemPrompt = systemPromptResponse.content[0]?.text || '';
+    } else {
+      systemPrompt = systemPromptResponse.choices[0].message.content || '';
+    }
     console.log(`✅ Generated system prompt (${systemPrompt.length} chars)`);
     // Generate a placeholder image (a simple colored circle with initials)
     const placeholderImage = generatePlaceholderImage(characterData.name);

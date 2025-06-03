@@ -96,6 +96,7 @@ export interface RootState {
   tempApiKeys: {
     openai?: string;
     anthropic?: string;
+    perplexity?: string;
     googleai?: string;
     [key: string]: string | undefined;
   };

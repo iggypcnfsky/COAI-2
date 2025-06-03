@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Eye, EyeOff, Key, Image } from 'lucide-react';
+import { Eye, EyeOff, Key, Image, Brain, Search } from 'lucide-react';
 import { setRunwareApiKey, removeRunwareApiKey } from '@/lib/api-utils';
 // Import the Zustand store hook for API key management
 import { useApiKey } from '@/hooks/store/useApiKey';
@@ -18,23 +18,35 @@ const ApiKeySettings: React.FC = () => {
   const setTempApiKey = useAppStore((state) => state.setTempApiKey);
   const removeTempApiKey = useAppStore((state) => state.removeTempApiKey);
   
-  // Get Runware API key and check if it's valid
+  // Get API keys and check if they're valid
   const runwareApiKey = tempApiKeys.runware || '';
+  const anthropicApiKey = tempApiKeys.anthropic || '';
+  const perplexityApiKey = tempApiKeys.perplexity || '';
   const hasRunwareKey = runwareApiKey.trim().length > 0;
+  const hasAnthropicKey = anthropicApiKey.trim().length > 0;
+  const hasPerplexityKey = perplexityApiKey.trim().length > 0;
   
   // Local state for editing UI
   const [localOpenaiKey, setLocalOpenaiKey] = useState(openaiApiKey);
   const [localRunwareKey, setLocalRunwareKey] = useState(runwareApiKey);
+  const [localAnthropicKey, setLocalAnthropicKey] = useState(anthropicApiKey);
+  const [localPerplexityKey, setLocalPerplexityKey] = useState(perplexityApiKey);
   const [isEditingOpenai, setIsEditingOpenai] = useState(false);
   const [isEditingRunware, setIsEditingRunware] = useState(false);
+  const [isEditingAnthropic, setIsEditingAnthropic] = useState(false);
+  const [isEditingPerplexity, setIsEditingPerplexity] = useState(false);
   const [showOpenaiApiKey, setShowOpenaiApiKey] = useState(false);
   const [showRunwareApiKey, setShowRunwareApiKey] = useState(false);
+  const [showAnthropicApiKey, setShowAnthropicApiKey] = useState(false);
+  const [showPerplexityApiKey, setShowPerplexityApiKey] = useState(false);
 
   // Update local state when store values change
   useEffect(() => {
     setLocalOpenaiKey(openaiApiKey);
     setLocalRunwareKey(runwareApiKey);
-  }, [openaiApiKey, runwareApiKey]);
+    setLocalAnthropicKey(anthropicApiKey);
+    setLocalPerplexityKey(perplexityApiKey);
+  }, [openaiApiKey, runwareApiKey, anthropicApiKey, perplexityApiKey]);
 
   const handleSaveOpenaiKey = () => {
     if (localOpenaiKey.trim()) {
@@ -72,6 +84,34 @@ const ApiKeySettings: React.FC = () => {
     
     setLocalRunwareKey('');
     setIsEditingRunware(false);
+  };
+
+  const handleSaveAnthropicKey = () => {
+    if (localAnthropicKey.trim()) {
+      setTempApiKey('anthropic', localAnthropicKey.trim());
+      setIsEditingAnthropic(false);
+      setShowAnthropicApiKey(false);
+    }
+  };
+
+  const handleRemoveAnthropicKey = () => {
+    removeTempApiKey('anthropic');
+    setLocalAnthropicKey('');
+    setIsEditingAnthropic(false);
+  };
+
+  const handleSavePerplexityKey = () => {
+    if (localPerplexityKey.trim()) {
+      setTempApiKey('perplexity', localPerplexityKey.trim());
+      setIsEditingPerplexity(false);
+      setShowPerplexityApiKey(false);
+    }
+  };
+
+  const handleRemovePerplexityKey = () => {
+    removeTempApiKey('perplexity');
+    setLocalPerplexityKey('');
+    setIsEditingPerplexity(false);
   };
 
   const maskKey = (key: string) => {
@@ -257,6 +297,192 @@ const ApiKeySettings: React.FC = () => {
                     variant="outline"
                     size="sm"
                     onClick={handleRemoveRunwareKey}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Anthropic API Key Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5" />
+            Anthropic API Key
+          </CardTitle>
+          <CardDescription>
+            Required for Claude models (Claude 3.5 Sonnet, Claude 4 Sonnet, Claude 4 Opus). Your key is stored locally and never sent to our servers.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!hasAnthropicKey || isEditingAnthropic ? (
+            // Editing mode
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="anthropic-api-key">Anthropic API Key</Label>
+                <div className="relative">
+                  <Input
+                    id="anthropic-api-key"
+                    type={showAnthropicApiKey ? 'text' : 'password'}
+                    value={localAnthropicKey}
+                    onChange={(e) => setLocalAnthropicKey(e.target.value)}
+                    placeholder="sk-ant-..."
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3"
+                    onClick={() => setShowAnthropicApiKey(!showAnthropicApiKey)}
+                  >
+                    {showAnthropicApiKey ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-neutral-500">
+                  Get your API key from{' '}
+                  <a
+                    href="https://console.anthropic.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    Anthropic Console
+                  </a>
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={handleSaveAnthropicKey} disabled={!localAnthropicKey.trim()}>
+                  Save Key
+                </Button>
+                {hasAnthropicKey && (
+                  <Button variant="outline" onClick={() => setIsEditingAnthropic(false)}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            // Display mode
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="font-mono text-sm">{maskKey(anthropicApiKey)}</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingAnthropic(true)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRemoveAnthropicKey}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Perplexity API Key Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Search className="h-5 w-5" />
+            Perplexity API Key
+          </CardTitle>
+          <CardDescription>
+            Required for Perplexity Sonar models with real-time web search capabilities. Your key is stored locally and never sent to our servers.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!hasPerplexityKey || isEditingPerplexity ? (
+            // Editing mode
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="perplexity-api-key">Perplexity API Key</Label>
+                <div className="relative">
+                  <Input
+                    id="perplexity-api-key"
+                    type={showPerplexityApiKey ? 'text' : 'password'}
+                    value={localPerplexityKey}
+                    onChange={(e) => setLocalPerplexityKey(e.target.value)}
+                    placeholder="pplx-..."
+                    className="pr-10"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3"
+                    onClick={() => setShowPerplexityApiKey(!showPerplexityApiKey)}
+                  >
+                    {showPerplexityApiKey ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-neutral-500">
+                  Get your API key from{' '}
+                  <a
+                    href="https://www.perplexity.ai/settings/api"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    Perplexity API Settings
+                  </a>
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={handleSavePerplexityKey} disabled={!localPerplexityKey.trim()}>
+                  Save Key
+                </Button>
+                {hasPerplexityKey && (
+                  <Button variant="outline" onClick={() => setIsEditingPerplexity(false)}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            // Display mode
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="font-mono text-sm">{maskKey(perplexityApiKey)}</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingPerplexity(true)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRemovePerplexityKey}
                   >
                     Remove
                   </Button>

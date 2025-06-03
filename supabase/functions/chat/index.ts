@@ -1,4 +1,6 @@
 import OpenAI from 'npm:openai@4.28.0';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.24.3';
+
 // CORS headers embedded in the function
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,7 +8,38 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
   'Access-Control-Max-Age': '86400'
 };
+
 const SYSTEM_PROMPT = `You are a team member.`;
+
+// Model provider mapping
+const MODEL_PROVIDERS = {
+  // OpenAI models
+  'gpt-4.1-nano': 'openai',
+  'o4-mini': 'openai',
+  'o3': 'openai',
+  'o1': 'openai',
+  'gpt-4.1': 'openai',
+  'gpt-4o': 'openai',
+  'chatgpt-4o-latest': 'openai',
+  
+  // Anthropic Claude models
+  'claude-3-5-sonnet': 'anthropic',
+  'claude-4-sonnet': 'anthropic',
+  'claude-4-opus': 'anthropic',
+  
+  // Perplexity models
+  'sonar': 'perplexity',
+  'sonar-pro': 'perplexity',
+  'sonar-reasoning': 'perplexity',
+  'sonar-reasoning-pro': 'perplexity',
+} as const;
+
+// Anthropic model name mapping
+const ANTHROPIC_MODEL_MAP = {
+  'claude-3-5-sonnet': 'claude-3-5-sonnet-20241022',
+  'claude-4-sonnet': 'claude-sonnet-4-20250514',
+  'claude-4-opus': 'claude-opus-4-20250514',
+} as const;
 
 // Token estimation and context window management utilities
 function estimateTokens(text: string): number {
@@ -100,12 +133,13 @@ Deno.serve(async (req)=>{
     });
   }
   try {
-    const { messages, role, model, employeePrompt, employeeName, openaiApiKey } = await req.json();
+    const { messages, role, model, employeePrompt, employeeName, openaiApiKey, anthropicApiKey, perplexityApiKey } = await req.json();
     
-    // Validate OpenAI API key
-    if (!openaiApiKey) {
+    // Determine which provider to use based on the model
+    const provider = MODEL_PROVIDERS[model as keyof typeof MODEL_PROVIDERS];
+    if (!provider) {
       return new Response(JSON.stringify({
-        error: 'OpenAI API key is required'
+        error: `Unsupported model: ${model}`
       }), {
         status: 400,
         headers: {
@@ -115,10 +149,84 @@ Deno.serve(async (req)=>{
       });
     }
     
-    // Initialize OpenAI with the provided API key
-    const openai = new OpenAI({
-      apiKey: openaiApiKey
-    });
+    // Validate API key for the required provider
+    let apiKey: string;
+    switch (provider) {
+      case 'openai':
+        if (!openaiApiKey) {
+          return new Response(JSON.stringify({
+            error: 'OpenAI API key is required for this model'
+          }), {
+            status: 400,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            }
+          });
+        }
+        apiKey = openaiApiKey;
+        break;
+      case 'anthropic':
+        if (!anthropicApiKey) {
+          return new Response(JSON.stringify({
+            error: 'Anthropic API key is required for Claude models'
+          }), {
+            status: 400,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            }
+          });
+        }
+        apiKey = anthropicApiKey;
+        break;
+      case 'perplexity':
+        if (!perplexityApiKey) {
+          return new Response(JSON.stringify({
+            error: 'Perplexity API key is required for Sonar models'
+          }), {
+            status: 400,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            }
+          });
+        }
+        apiKey = perplexityApiKey;
+        break;
+      default:
+        return new Response(JSON.stringify({
+          error: `Unsupported provider: ${provider}`
+        }), {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
+    }
+    
+    // Initialize the appropriate client
+    let client: any;
+    switch (provider) {
+      case 'openai':
+        client = new OpenAI({
+          apiKey: apiKey
+        });
+        break;
+      case 'anthropic':
+        client = new Anthropic({
+          apiKey: apiKey
+        });
+        break;
+      case 'perplexity':
+        // Perplexity uses OpenAI-compatible API
+        client = new OpenAI({
+          apiKey: apiKey,
+          baseURL: 'https://api.perplexity.ai'
+        });
+        break;
+    }
     // 🚨 ENHANCED DEBUG: Track edge function calls
     const timestamp = new Date().toISOString();
     const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -162,9 +270,12 @@ Deno.serve(async (req)=>{
     if (!employeePrompt) {
       console.log(`[WARNING] No employeePrompt received for ${role}! Using fallback.`);
     }
-    // Use the exact OpenAI model names - no mapping needed
-    const actualModel = model;
-    console.log(`[${role}] Model mapping: ${model} -> ${actualModel}`);
+    // Map model names for different providers
+    let actualModel = model;
+    if (provider === 'anthropic') {
+      actualModel = ANTHROPIC_MODEL_MAP[model as keyof typeof ANTHROPIC_MODEL_MAP] || model;
+    }
+    console.log(`[${role}] Model mapping: ${model} -> ${actualModel} (provider: ${provider})`);
     // 🔍 ENHANCED DEBUG: Log the conversation context this AI is receiving
     console.log(`🔍 [${requestId}] [${employeeName}] Received ${messages.length} messages in context:`);
     console.log(`🔍 [${requestId}] [${employeeName}] Employee prompt: ${employeePrompt ? employeePrompt.substring(0, 100) + '...' : 'NOT PROVIDED'}`);
@@ -272,24 +383,138 @@ Deno.serve(async (req)=>{
     ).length;
     console.log(`🖼️ [DEBUG] [${role}] Transformed ${imagesCount} messages with images for OpenAI`);
 
-    const stream = await openai.chat.completions.create({
-      model: actualModel,
-      messages: [
-        systemMessage,
-        ...transformedMessages
-      ],
-      stream: true,
-      max_completion_tokens: 4000
-    });
+    // Helper function to ensure proper message alternation for Perplexity
+    function ensureMessageAlternation(messages: any[]): any[] {
+      if (messages.length === 0) return messages;
+      
+      const alternatingMessages: any[] = [];
+      let lastRole = '';
+      
+      for (const message of messages) {
+        // Skip consecutive messages with the same role (except for the first message)
+        if (message.role === lastRole && alternatingMessages.length > 0) {
+          // Merge content if both are strings, otherwise skip
+          if (typeof message.content === 'string' && typeof alternatingMessages[alternatingMessages.length - 1].content === 'string') {
+            alternatingMessages[alternatingMessages.length - 1].content += '\n\n' + message.content;
+          }
+          continue;
+        }
+        
+        alternatingMessages.push(message);
+        lastRole = message.role;
+      }
+      
+      return alternatingMessages;
+    }
+
+    // Helper function to ensure conversation ends with user message for Perplexity
+    function ensureEndsWithUser(messages: any[]): any[] {
+      if (messages.length === 0) return messages;
+      
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === 'user') {
+        return messages;
+      }
+      
+      // If last message is not from user, add a continuation prompt
+      return [
+        ...messages,
+        {
+          role: 'user',
+          content: 'Please continue the conversation.'
+        }
+      ];
+    }
+
+    // Create stream based on provider
+    let stream: any;
+    
+    if (provider === 'anthropic') {
+      // Transform messages for Anthropic format
+      const anthropicMessages = transformedMessages.map(msg => {
+        if (Array.isArray(msg.content)) {
+          // Handle image content for Anthropic
+          return {
+            role: msg.role === 'assistant' ? 'assistant' : 'user',
+            content: msg.content.map((item: any) => {
+              if (item.type === 'image_url') {
+                // Extract base64 data from data URL
+                const base64Data = item.image_url.url.split(',')[1];
+                const mimeType = item.image_url.url.split(';')[0].split(':')[1];
+                return {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: mimeType,
+                    data: base64Data
+                  }
+                };
+              }
+              return item;
+            })
+          };
+        }
+        return {
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: msg.content
+        };
+      });
+
+      stream = await client.messages.stream({
+        model: actualModel,
+        max_tokens: 4000,
+        system: systemMessage.content,
+        messages: anthropicMessages
+      });
+    } else {
+      // OpenAI and Perplexity (OpenAI-compatible)
+      let finalMessages = [systemMessage, ...transformedMessages];
+      
+      // For Perplexity, ensure strict message alternation and ends with user
+      if (provider === 'perplexity') {
+        let perplexityMessages = ensureMessageAlternation(transformedMessages);
+        perplexityMessages = ensureEndsWithUser(perplexityMessages);
+        finalMessages = [systemMessage, ...perplexityMessages];
+        console.log(`🔄 [PERPLEXITY] Ensured message alternation and user ending: ${transformedMessages.length} -> ${perplexityMessages.length} messages`);
+        console.log(`🔄 [PERPLEXITY] Last message role: ${perplexityMessages[perplexityMessages.length - 1]?.role}`);
+      }
+      
+      stream = await client.chat.completions.create({
+        model: actualModel,
+        messages: finalMessages,
+        stream: true,
+        max_completion_tokens: 4000
+      });
+    }
+
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
     const encoder = new TextEncoder();
+    
     (async ()=>{
       try {
-        for await (const chunk of stream){
-          const content = chunk.choices[0]?.delta?.content;
-          if (content) {
-            await writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        if (provider === 'anthropic') {
+          // Handle Anthropic streaming
+          for await (const chunk of stream) {
+            if (chunk.type === 'content_block_delta' && chunk.delta?.text) {
+              // Convert Anthropic format to OpenAI-compatible format
+              const openaiChunk = {
+                choices: [{
+                  delta: {
+                    content: chunk.delta.text
+                  }
+                }]
+              };
+              await writer.write(encoder.encode(`data: ${JSON.stringify(openaiChunk)}\n\n`));
+            }
+          }
+        } else {
+          // Handle OpenAI/Perplexity streaming
+          for await (const chunk of stream){
+            const content = chunk.choices[0]?.delta?.content;
+            if (content) {
+              await writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+            }
           }
         }
         await writer.write(encoder.encode('data: [DONE]\n\n'));

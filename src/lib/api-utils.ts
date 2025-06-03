@@ -115,19 +115,38 @@ export interface GeneratedSynth {
 }
 
 export const generateAISynth = async (request: SynthGenerationRequest): Promise<GeneratedSynth> => {
-  // Get API key from Zustand store instead of localStorage
-  const apiKey = useAppStore.getState().tempApiKeys.openai;
-  if (!apiKey) {
-    throw new Error('OpenAI API key not found. Please set your API key in settings.');
+  // Get all API keys from Zustand store
+  const { tempApiKeys } = useAppStore.getState();
+  
+  // Determine which API key is needed based on the model
+  const model = request.baseModel || 'gpt-4o';
+  let requiredProvider = 'openai';
+  
+  if (model.startsWith('claude-')) {
+    requiredProvider = 'anthropic';
+  } else if (model.includes('sonar')) {
+    requiredProvider = 'perplexity';
   }
+  
+  // Check if the required API key is available
+  const requiredKey = tempApiKeys[requiredProvider as keyof typeof tempApiKeys];
+  if (!requiredKey) {
+    const providerName = requiredProvider === 'anthropic' ? 'Anthropic' : 
+                        requiredProvider === 'perplexity' ? 'Perplexity' : 'OpenAI';
+    throw new Error(`${providerName} API key not found. Please set your API key in settings.`);
+  }
+
+  const requestPayload = {
+    ...request,
+    openaiApiKey: tempApiKeys.openai,
+    anthropicApiKey: tempApiKeys.anthropic,
+    perplexityApiKey: tempApiKeys.perplexity,
+  };
 
   const response = await fetch(getEdgeFunctionUrl('create-synth-ai'), {
     method: 'POST',
     headers: getSupabaseHeaders(),
-    body: JSON.stringify({
-      ...request,
-      openaiApiKey: apiKey,
-    }),
+    body: JSON.stringify(requestPayload),
   });
 
   if (!response.ok) {
@@ -306,10 +325,25 @@ export const generateTeamImage = async (teamData: any): Promise<string> => {
 };
 
 export const generateAITeam = async (request: TeamGenerationRequest) => {
-  // Get API key from Zustand store instead of localStorage
-  const apiKey = useAppStore.getState().tempApiKeys.openai;
-  if (!apiKey) {
-    throw new Error('OpenAI API key not found. Please set your API key in settings.');
+  // Get all API keys from Zustand store
+  const { tempApiKeys } = useAppStore.getState();
+  
+  // Determine which API key is needed based on the model
+  const model = request.baseModel || 'gpt-4o';
+  let requiredProvider = 'openai';
+  
+  if (model.startsWith('claude-')) {
+    requiredProvider = 'anthropic';
+  } else if (model.includes('sonar')) {
+    requiredProvider = 'perplexity';
+  }
+  
+  // Check if the required API key is available
+  const requiredKey = tempApiKeys[requiredProvider as keyof typeof tempApiKeys];
+  if (!requiredKey) {
+    const providerName = requiredProvider === 'anthropic' ? 'Anthropic' : 
+                        requiredProvider === 'perplexity' ? 'Perplexity' : 'OpenAI';
+    throw new Error(`${providerName} API key not found. Please set your API key in settings.`);
   }
 
   console.log(`🔑 Team generation (images will be generated separately)`);
@@ -319,7 +353,9 @@ export const generateAITeam = async (request: TeamGenerationRequest) => {
     headers: getSupabaseHeaders(),
     body: JSON.stringify({
       ...request,
-      openaiApiKey: apiKey,
+      openaiApiKey: tempApiKeys.openai,
+      anthropicApiKey: tempApiKeys.anthropic,
+      perplexityApiKey: tempApiKeys.perplexity,
     }),
   });
 

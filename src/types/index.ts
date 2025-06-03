@@ -11,7 +11,7 @@ export interface AIEmployee {
   bio?: string;
   experience?: string[];
   systemPrompt: string;
-  baseModel: 'gpt-4.1-nano' | 'o4-mini' | 'o3' | 'o1' | 'gpt-4.1' | 'gpt-4o' | 'chatgpt-4o-latest';
+  baseModel: 'gpt-4.1-nano' | 'o4-mini' | 'o3' | 'o1' | 'gpt-4.1' | 'gpt-4o' | 'chatgpt-4o-latest' | 'claude-3-5-sonnet' | 'claude-4-sonnet' | 'claude-4-opus' | 'sonar' | 'sonar-pro' | 'sonar-reasoning' | 'sonar-reasoning-pro';
   isLoadingImage?: boolean; // Flag to indicate if profile image is still being generated
   isPublic?: boolean; // Flag to indicate if this synth is publicly visible
 }
@@ -92,6 +92,7 @@ export interface COAIProfileData {
   apiKeys?: {
     openai?: string;
     anthropic?: string;
+    perplexity?: string;
     googleai?: string;
     [provider: string]: string | undefined;
   };
@@ -108,7 +109,7 @@ export interface COAISynthData {
   bio?: string;
   experience?: string[];
   systemPrompt: string;
-  baseModel: 'gpt-4.1-nano' | 'o4-mini' | 'o3' | 'o1' | 'gpt-4.1' | 'gpt-4o' | 'chatgpt-4o-latest';
+  baseModel: 'gpt-4.1-nano' | 'o4-mini' | 'o3' | 'o1' | 'gpt-4.1' | 'gpt-4o' | 'chatgpt-4o-latest' | 'claude-3-5-sonnet' | 'claude-4-sonnet' | 'claude-4-opus' | 'sonar' | 'sonar-pro' | 'sonar-reasoning' | 'sonar-reasoning-pro';
   isPublic?: boolean;
   metadata?: Record<string, any>;
 }

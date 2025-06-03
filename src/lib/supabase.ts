@@ -338,13 +338,17 @@ if (import.meta.env.DEV && !SUPABASE_ANON_KEY) {
   console.warn('⚠️ SUPABASE_ANON_KEY is not configured');
 }
 
-export async function streamChat(messages: any[], role: string, model: string, employeePrompt?: string, employeeName?: string, openaiApiKey?: string) {
+export async function streamChat(messages: any[], role: string, model: string, employeePrompt?: string, employeeName?: string, openaiApiKey?: string, anthropicApiKey?: string, perplexityApiKey?: string) {
   console.log('🚀 [STREAM CHAT DEBUG] streamChat called');
   console.log('🚀 [STREAM CHAT DEBUG] messages.length:', messages.length);
   console.log('🚀 [STREAM CHAT DEBUG] role:', role);
   console.log('🚀 [STREAM CHAT DEBUG] model:', model);
   console.log('🚀 [STREAM CHAT DEBUG] employeeName:', employeeName);
-  console.log('🚀 [STREAM CHAT DEBUG] openaiApiKey length:', openaiApiKey?.length || 0);
+  console.log('🚀 [STREAM CHAT DEBUG] API keys available:', {
+    openai: !!openaiApiKey,
+    anthropic: !!anthropicApiKey,
+    perplexity: !!perplexityApiKey
+  });
   
   try {
     if (!SUPABASE_ANON_KEY) {
@@ -352,9 +356,21 @@ export async function streamChat(messages: any[], role: string, model: string, e
       throw new Error('Supabase anon key is not configured');
     }
 
-    if (!openaiApiKey) {
-      console.error('🚀 [STREAM CHAT DEBUG] OpenAI API key missing');
-      throw new Error('OpenAI API key is required. Please enter your API key in the header.');
+    // Determine which API key is required based on the model
+    let requiredKey = openaiApiKey;
+    let providerName = 'OpenAI';
+    
+    if (model.startsWith('claude-')) {
+      requiredKey = anthropicApiKey;
+      providerName = 'Anthropic';
+    } else if (model.includes('sonar')) {
+      requiredKey = perplexityApiKey;
+      providerName = 'Perplexity';
+    }
+
+    if (!requiredKey) {
+      console.error(`🚀 [STREAM CHAT DEBUG] ${providerName} API key missing for model ${model}`);
+      throw new Error(`${providerName} API key is required for model ${model}. Please enter your API key in settings.`);
     }
     
     console.log('🚀 [STREAM CHAT DEBUG] Making fetch request to chat endpoint');
@@ -365,7 +381,16 @@ export async function streamChat(messages: any[], role: string, model: string, e
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({ messages, role, model, employeePrompt, employeeName, openaiApiKey }),
+      body: JSON.stringify({ 
+        messages, 
+        role, 
+        model, 
+        employeePrompt, 
+        employeeName, 
+        openaiApiKey,
+        anthropicApiKey,
+        perplexityApiKey
+      }),
     });
 
     if (!response.ok) {

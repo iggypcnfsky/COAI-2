@@ -1022,13 +1022,18 @@ class DirectService implements IDataService {
         const streamingMessageId = await state.startMessageStream(threadId, '', aiEmployee);
         console.log(`🔍 DEBUG: Created streaming message ${streamingMessageId} for ${synthData.reference.metadata?.name}`);
         
+        // Get all API keys from store
+        const apiKeys = this.getApiKeys();
+        
         const requestBody = {
           messages: chatHistory,
           role: synthData.reference.metadata?.role || 'Assistant',
           model: synthData.reference.metadata?.model || 'gpt-4',
           employeePrompt: systemPrompt,
           employeeName: synthData.reference.metadata?.name || 'AI',
-          openaiApiKey
+          openaiApiKey: apiKeys.openai,
+          anthropicApiKey: apiKeys.anthropic,
+          perplexityApiKey: apiKeys.perplexity
         };
         
         console.log(`🔍 DEBUG: Request body for ${synthData.reference.metadata?.name}:`, {
