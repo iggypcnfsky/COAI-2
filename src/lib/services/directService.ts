@@ -23,6 +23,14 @@ import {
   ChatMessage,
 
 } from '../../types';
+import { 
+  shouldInjectPrompt, 
+  createReinjectedPrompt, 
+  shouldReinforceCharacter,
+  enhanceSystemPromptForConsistency,
+  logPromptReinjection,
+  createFreshStartPrompt
+} from '../utils/promptReinjection';
 
 // In-memory storage for unauthenticated mode
 const memoryStore = {
@@ -708,6 +716,57 @@ class DirectService implements IDataService {
   }
 
   /**
+   * Reinforce character prompts for all synths in a thread after chat clear
+   * This ensures synths remember who they are when starting fresh
+   */
+  async reinforceCharactersAfterClear(threadId: string): Promise<void> {
+    try {
+      const threadSynths = await this.getThreadSynths(threadId);
+      
+      if (threadSynths.length === 0) {
+        console.log('🔄 [FRESH START] No synths in thread, skipping character reinforcement');
+        return;
+      }
+      
+      console.log(`🔄 [FRESH START] Reinforcing character prompts for ${threadSynths.length} synths in thread ${threadId}`);
+      
+      // Update each synth's reference with fresh start prompt
+      for (const threadSynth of threadSynths) {
+        const synthId = threadSynth.synth_id;
+        const currentReference = threadSynth.synth_reference;
+        
+        if (currentReference.metadata?.systemPrompt) {
+          const originalPrompt = currentReference.metadata.systemPrompt;
+          const freshPrompt = createFreshStartPrompt(originalPrompt);
+          
+          // Temporarily update the synth reference with fresh start prompt
+          // This will be used for the next AI response
+          const updatedReference = {
+            ...currentReference,
+            metadata: {
+              ...currentReference.metadata,
+              systemPrompt: freshPrompt,
+              _freshStartApplied: true // Flag to track this was applied
+            }
+          };
+          
+          await this.updateThreadSynthReference(threadId, synthId, updatedReference);
+          
+          const characterName = currentReference.metadata?.name || 'AI';
+          logPromptReinjection(characterName, 0, 'fresh_start');
+          
+          console.log(`✅ [FRESH START] Applied fresh start prompt to ${characterName}`);
+        }
+      }
+      
+      console.log(`✅ [FRESH START] Character reinforcement complete for thread ${threadId}`);
+      
+    } catch (error) {
+      console.error('❌ [FRESH START] Error reinforcing characters after clear:', error);
+    }
+  }
+
+  /**
    * Generate AI responses for a thread
    */
   private async generateAIResponse(threadId: string, userMessage: string): Promise<void> {
@@ -891,7 +950,55 @@ class DirectService implements IDataService {
         const basePrompt = synthData.reference.metadata?.systemPrompt || 
           `You are ${synthData.reference.metadata?.name || 'an AI assistant'}. Respond according to your role.`;
         
-        const systemPrompt = uniqueContext + basePrompt + conversationContext;
+        // 🔄 PROMPT REINJECTION: Check if we should reinject the character prompt
+        const messageCount = chatHistory.length;
+        const characterName = synthData.reference.metadata?.name || 'AI';
+        const characterRole = synthData.reference.metadata?.role || 'Assistant';
+        const isFreshStart = (synthData.reference.metadata as any)?._freshStartApplied === true;
+        
+        let enhancedPrompt = basePrompt;
+        let reinjectionReason: 'interval' | 'reinforcement' | 'fresh_start' | null = null;
+        
+        // Determine if we should inject prompt
+        if (isFreshStart) {
+          // Fresh start after chat clear - use the prompt as-is (already enhanced)
+          enhancedPrompt = basePrompt;
+          reinjectionReason = 'fresh_start';
+          
+          // Reset the fresh start flag after use
+          const resetReference = {
+            ...synthData.reference,
+            metadata: {
+              ...synthData.reference.metadata,
+              systemPrompt: synthData.reference.metadata?.systemPrompt?.replace('FRESH START REMINDER: ', '') || basePrompt,
+              _freshStartApplied: undefined
+            }
+          };
+          
+          // Update the reference to remove the fresh start flag (async, don't wait)
+          this.updateThreadSynthReference(threadId, synthData.synthId, resetReference).catch(error => {
+            console.error('Failed to reset fresh start flag:', error);
+          });
+          
+        } else if (shouldInjectPrompt(messageCount)) {
+          // Regular interval-based reinjection to maintain character consistency
+          enhancedPrompt = createReinjectedPrompt(basePrompt, false);
+          reinjectionReason = 'interval';
+        } else if (shouldReinforceCharacter(messageCount)) {
+          // Additional reinforcement for very long conversations
+          enhancedPrompt = createReinjectedPrompt(basePrompt, true);
+          reinjectionReason = 'reinforcement';
+        }
+        
+        // Enhance prompt for consistency in longer conversations
+        enhancedPrompt = enhanceSystemPromptForConsistency(enhancedPrompt, characterName, characterRole, messageCount);
+        
+        // Log reinjection events
+        if (reinjectionReason) {
+          logPromptReinjection(characterName, messageCount, reinjectionReason);
+        }
+        
+        const systemPrompt = uniqueContext + enhancedPrompt + conversationContext;
         
         console.log(`🔍 DEBUG: System prompt for ${synthData.reference.metadata?.name}:`, systemPrompt.substring(0, 500) + '...');
         console.log(`🔍 DEBUG: Conversation context for ${synthData.reference.metadata?.name}:`, conversationContext);

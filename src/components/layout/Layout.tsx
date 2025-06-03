@@ -1893,6 +1893,15 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
 
       await Promise.all(deletePromises);
 
+      // 🔄 PROMPT REINJECTION: Reinforce character prompts after clearing chat
+      // This ensures synths remember who they are when starting fresh
+      try {
+        await directService.reinforceCharactersAfterClear(activeThreadId);
+        console.log('✅ [CLEAR CHAT] Character reinforcement applied successfully');
+      } catch (reinforceError) {
+        console.error('⚠️ [CLEAR CHAT] Failed to reinforce characters, but continuing:', reinforceError);
+      }
+
       // Clear local UI state as well (for legacy compatibility)
       setMessages([]);
       
