@@ -41,6 +41,8 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
   globalSpacebarCount = 0,
   onSetDocumentMentionHandler,
 }) => {
+  console.log('🚨 [COMPONENT MOUNT DEBUG] MessageInputWithMentions mounted with onSetDocumentMentionHandler:', !!onSetDocumentMentionHandler);
+  
   // Use message input hook for state management
   const {
     text: message,
@@ -65,7 +67,6 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   // Filter employees to only include current team members
   const teamEmployees = useMemo(() => {
     return employees.filter(employee => 
@@ -118,57 +119,6 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
     }
     return false; // Indicate message was not sent
   }, [message, attachedImage, displayMessage, messageHistory, setMessage, setAttachedImage, setCursorPosition, setHistoryIndex, setMessageHistory, onSendMessage, clearCompletedMentions]);
-
-  // Set up document mention handler when component mounts
-  useEffect(() => {
-    if (onSetDocumentMentionHandler) {
-      const handleDocumentMention = (doc: Document) => {
-        // Add null check to prevent errors
-        if (!doc || !doc.title) {
-          console.error('Invalid document passed to handleDocumentMention:', doc);
-          return;
-        }
-        
-        // Insert document mention at current cursor position
-        const currentMessage = textareaRef.current?.value || '';
-        const currentCursor = textareaRef.current?.selectionStart || 0;
-        
-        const beforeCursor = currentMessage.substring(0, currentCursor);
-        const afterCursor = currentMessage.substring(currentCursor);
-        
-        // Create a document mention format with hidden content for AI context
-        const documentMention = `📄[${doc.title}]`;
-        const hiddenContext = `\n\n<!-- DOCUMENT_CONTEXT: 
-Document Title: "${doc.title}"
-Document ID: ${doc.id}
-Content: ${doc.content || 'No content available'}
-Created: ${doc.createdAt || 'Unknown'}
-Updated: ${doc.updatedAt || 'Unknown'}
--->`;
-        
-        const newText = `${beforeCursor}${documentMention}${hiddenContext} ${afterCursor}`;
-        const newCursorPosition = beforeCursor.length + documentMention.length + hiddenContext.length + 1;
-        
-        setMessage(newText);
-        setCursorPosition(newCursorPosition);
-        
-        // Focus the textarea and set cursor position
-        setTimeout(() => {
-          if (textareaRef.current) {
-            textareaRef.current.focus();
-            textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-          }
-        }, 0);
-      };
-      
-      onSetDocumentMentionHandler(handleDocumentMention);
-      
-      // Cleanup function to remove handler when component unmounts
-      return () => {
-        onSetDocumentMentionHandler(null);
-      };
-    }
-  }, [onSetDocumentMentionHandler, setMessage, setCursorPosition]); // Include Zustand setters in dependencies
 
   // Reset selected mention index when filtered employees change
   useEffect(() => {

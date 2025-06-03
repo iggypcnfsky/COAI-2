@@ -88,7 +88,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
   const [dragType, setDragType] = React.useState<'team' | 'employee' | 'document' | null>(null);
   const [incomingMessageCount, setIncomingMessageCount] = React.useState(0);
   const [lastMessageCount, setLastMessageCount] = React.useState(0);
-  const [insertDocumentMention, setInsertDocumentMention] = React.useState<((doc: Document) => void) | null>(null);
+
 
   const { 
     isSending,
@@ -306,13 +306,28 @@ const ChatSection: React.FC<ChatSectionProps> = ({
       if (parsedData.type === 'document' && parsedData.document) {
         const doc = parsedData.document;
         console.log('🚨 [CHAT SECTION DROP DEBUG] Document detected:', doc);
-        console.log('🚨 [CHAT SECTION DROP DEBUG] insertDocumentMention handler exists:', !!insertDocumentMention);
         
-        if (insertDocumentMention && doc && doc.title) {
-          console.log('🚨 [CHAT SECTION DROP DEBUG] Calling insertDocumentMention with doc:', doc.title);
-          insertDocumentMention(doc);
+        // Handle document drop by directly calling the message input's document handler
+        // We'll get a reference to the MessageInputWithMentions component and call its method
+        const messageInputElement = document.querySelector('textarea[placeholder*="Type your message"]') as HTMLTextAreaElement;
+        
+        if (messageInputElement && doc && doc.title) {
+          console.log('🚨 [CHAT SECTION DROP DEBUG] Found message input, simulating document drop');
+          
+          // Create a synthetic drop event on the message input
+          const syntheticEvent = new DragEvent('drop', {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: e.dataTransfer
+          });
+          
+          // Dispatch the event to the message input
+          messageInputElement.dispatchEvent(syntheticEvent);
         } else {
-          console.error('Invalid document or missing mention handler:', { doc, hasHandler: !!insertDocumentMention });
+          console.error('🚨 [CHAT SECTION DROP DEBUG] Could not find message input or invalid document:', { 
+            hasInput: !!messageInputElement, 
+            doc 
+          });
         }
       }
       else if ((parsedData.type === 'team' || parsedData.type === 'custom-team') && parsedData.employees) {
@@ -329,7 +344,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     } catch (error) {
       console.error('Error parsing dropped data:', error);
     }
-  }, [insertDocumentMention, onAddTeam, onAddTeamMember, teamMembers]);
+  }, [onAddTeam, onAddTeamMember, teamMembers]);
 
   // Memoize the filtered and normalized messages to prevent recreation on each render
   const displayMessages = useMemo(() => {
@@ -340,9 +355,10 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     return filtered;
   }, [activeThreadMessages]);
 
-  // Function to set document mention handler
+  // Function to set document mention handler (no longer needed, but keeping for compatibility)
   const handleSetDocumentMentionHandler = useCallback((handler: ((doc: Document) => void) | null) => {
-    setInsertDocumentMention(handler);
+    console.log('🚨 [CHAT SECTION DEBUG] handleSetDocumentMentionHandler called with handler:', !!handler);
+    // No longer needed since we handle document drops directly
   }, []);
 
   return (

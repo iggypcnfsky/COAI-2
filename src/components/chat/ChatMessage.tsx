@@ -63,6 +63,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isDemo = false, empl
     // This keeps the names in chat history for AI context but removes them from UI display
     let displayContent = message.content;
     
+    // Remove hidden document context from display while keeping it in the stored message for AI
+    displayContent = displayContent.replace(/\n\n<!-- DOCUMENT_CONTEXT:\s*\n[\s\S]*?-->/g, '');
+    
     if (!isUserMessage && displayContent && message.aiEmployee) {
       // More aggressive name stripping - remove any name prefix that matches the AI's name
       const aiName = message.aiEmployee.name;
