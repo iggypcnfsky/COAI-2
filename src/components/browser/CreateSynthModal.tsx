@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { generateAISynth } from '@/lib/api-utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import Logo from '@/components/Logo';
+import { getRandomChatColor } from '@/lib/utils/colors';
 
 interface CreateSynthModalProps {
   isOpen: boolean;
@@ -143,6 +144,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
       profileImage: generatedSynth.profileImage,
       bio: generatedSynth.bio,
       experience: generatedSynth.experience,
+      chatColor: getRandomChatColor(),
       isPublic,
     };
 
@@ -165,6 +167,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
       systemPrompt: formData.systemPrompt,
       baseModel: formData.baseModel as AIEmployee['baseModel'],
       profileImage: formData.profileImage || '/images/default-avatar.png',
+      chatColor: getRandomChatColor(),
       isPublic,
     };
 

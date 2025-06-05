@@ -98,9 +98,23 @@ const TeamMemberBadge: React.FC<{
   onRemove: (id: string) => void;
   onSelect?: (member: TeamMember) => void;
 }> = ({ member, onRemove, onSelect }) => {
+  // Use custom chat color if available, otherwise fall back to role-based color
+  const customStyle = member.chatColor 
+    ? { 
+        backgroundColor: member.chatColor + '20', // 20% opacity
+        borderColor: member.chatColor,
+        color: 'inherit'
+      }
+    : {};
+  
+  const className = member.chatColor 
+    ? 'flex items-center gap-1 border rounded-full pl-1 pr-2 py-1 cursor-pointer transition-colors flex-shrink-0'
+    : `flex items-center gap-1 ${getRoleTeamBadgeColor(member.role)} border rounded-full pl-1 pr-2 py-1 cursor-pointer transition-colors flex-shrink-0`;
+
   return (
     <div 
-      className={`flex items-center gap-1 ${getRoleTeamBadgeColor(member.role)} border rounded-full pl-1 pr-2 py-1 cursor-pointer transition-colors flex-shrink-0`}
+      className={className}
+      style={customStyle}
       onClick={() => onSelect?.(member)}
     >
       <img

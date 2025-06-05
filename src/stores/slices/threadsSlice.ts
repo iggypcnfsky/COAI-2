@@ -488,6 +488,7 @@ export const createThreadsSlice: StateCreator<
               experience: threadSynth.synth.experience,
               systemPrompt: threadSynth.synth.systemPrompt,
               baseModel: threadSynth.synth.baseModel,
+              chatColor: threadSynth.synth.chatColor,
               metadata: {}
             },
             created_at: new Date().toISOString(),

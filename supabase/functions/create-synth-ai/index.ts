@@ -189,6 +189,10 @@ CRITICAL NAME INSTRUCTIONS:
 - If the keywords contain a specific name (e.g., "buddy Joe", "friend Mike", "Sarah the expert"), USE THAT EXACT NAME but ensure it matches the gender requirement
 - If the keywords describe a character type without a name (e.g., "angry customer", "fat kids"), choose an appropriate name that fits the specified gender and character
 - The name MUST match the specified gender - no exceptions
+- CRITICAL: IT MUST BE ORIGINAL GOOD SOUNDING NAME.
+- BANNED NAMES: Rashid, Priya, Aisha, Rajiv, Arjun, Deepika, Vikram, Ananya, Rohan, Kavya
+- USE ONLY: Western European, Scandinavian, Slavic, Germanic, or simple English names
+- Safe name pool: Alex, Sam, Jordan, Taylor, Morgan, Casey, Riley, Avery, Quinn, Blake, Drew, Sage, River, Sky
 
 The keywords might describe:
 - A specific person with a name (e.g., "buddy Joe", "friend Sarah", "Mike the manager")
@@ -200,7 +204,7 @@ IMPORTANT: Return ONLY a valid JSON object with no additional text, explanations
 
 JSON structure required:
 {
-  "name": "Extract from keywords if specified (but ensure gender match), otherwise choose appropriate name for the specified gender",
+  "name": "Extract from keywords if specified (but ensure gender match), otherwise choose from the SAFE NAME POOL ONLY - NO INDIAN NAMES",
   "age": number between ${Math.max(5, averageAge - 2)}-${Math.min(80, averageAge + 2)},
   "gender": "${gender === 'any' ? 'Choose: male, female, or non-binary' : gender}",
   "role": "2-3 words maximum - LITERALLY what the keywords describe (e.g., 'Fat Kid', 'Angry Customer', 'Buddy Joe')",
@@ -222,6 +226,8 @@ CRITICAL:
 - The "role" field should literally describe what they ARE, not what they do professionally
 - BE REALISTIC - no overly positive or intellectual nonsense
 - Focus on creating an authentic character that EMBODIES the keywords directly
+- ABSOLUTELY NO SOUTH ASIAN NAMES - this is causing clustering issues
+- STICK TO THE SAFE NAME POOL to ensure variety without cultural bias
 
 Return only the JSON object, nothing else.`;
     // Create character response based on provider
@@ -236,7 +242,7 @@ Return only the JSON object, nothing else.`;
             content: characterPrompt
           }
         ],
-        temperature: 0.8
+        temperature: 0.5
       });
     } else {
       // OpenAI and Perplexity
@@ -248,7 +254,7 @@ Return only the JSON object, nothing else.`;
             content: characterPrompt
           }
         ],
-        temperature: 0.8
+        temperature: 0.5
       });
     }
     // Extract content based on provider

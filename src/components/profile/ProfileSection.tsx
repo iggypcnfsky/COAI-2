@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { ColorPicker } from '@/components/ui/color-picker';
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { PlusCircle, X, Save, Check, Trash2, Users } from 'lucide-react';
@@ -16,7 +17,7 @@ interface ProfileSectionProps {
   synth: AIEmployee | null; // Unified: employee = synth
   teamMember?: TeamMember | null;
   onAddToTeam: (synth: AIEmployee) => void;
-  onUpdateProfile?: (profile: AIEmployee | TeamMember, updates: { name?: string; role?: string; age?: number; gender?: 'male' | 'female' | 'non-binary' | 'any'; systemPrompt?: string; model?: string; baseModel?: AIEmployee['baseModel'] }) => Promise<void>;
+  onUpdateProfile?: (profile: AIEmployee | TeamMember, updates: { name?: string; role?: string; age?: number; gender?: 'male' | 'female' | 'non-binary' | 'any'; systemPrompt?: string; model?: string; baseModel?: AIEmployee['baseModel']; chatColor?: string }) => Promise<void>;
   onDeleteSynth?: (synthId: string) => void;
   allSynths?: AIEmployee[]; // All available synths to check team member correspondence
   isCollapsed: boolean;
@@ -43,6 +44,7 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
   const [editedRole, setEditedRole] = useState('');
   const [editedAge, setEditedAge] = useState(25);
   const [editedGender, setEditedGender] = useState<'male' | 'female' | 'non-binary' | 'any'>('any');
+  const [editedChatColor, setEditedChatColor] = useState('#3b82f6');
   const [isUpdateSuccessful, setIsUpdateSuccessful] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isImageHovered, setIsImageHovered] = useState(false);
@@ -67,12 +69,16 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
       setEditedRole(synth.role);
       setEditedAge(synth.age);
       setEditedGender(synth.gender || 'any');
+      setEditedChatColor(synth.chatColor || '#3b82f6');
     } else if (teamMember) {
       // For team members, use their stored systemPrompt
       setSystemPrompt(teamMember.systemPrompt);
       setSelectedModel(teamMember.model as AIEmployee['baseModel']);
       setEditedName(teamMember.name);
       setEditedRole(teamMember.role);
+      
+      // Use team member's own chatColor first, then fall back to synth or default
+      setEditedChatColor(teamMember.chatColor || (teamMemberSynth?.chatColor) || '#3b82f6');
       
       // If this team member corresponds to an actual synth, use the synth's age/gender
       if (teamMemberSynth) {
@@ -146,10 +152,12 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
       // Add model/baseModel based on profile type
       if (teamMember) {
         updates.model = selectedModel;
+        updates.chatColor = editedChatColor;
       } else if (synth) {
         updates.age = editedAge;
         updates.gender = editedGender;
         updates.baseModel = selectedModel;
+        updates.chatColor = editedChatColor;
       }
       
       await onUpdateProfile(profileToUpdate, updates);
@@ -178,7 +186,7 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isEditingTeamMember, teamMember, synth, editedName, editedRole, editedAge, editedGender, systemPrompt, selectedModel]);
+  }, [isEditingTeamMember, teamMember, synth, editedName, editedRole, editedAge, editedGender, editedChatColor, systemPrompt, selectedModel]);
 
   const handleDeleteSynth = () => {
     setDeleteDialogOpen(true);
@@ -543,6 +551,23 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
               </div>
             )}
           </div>
+
+          {/* Chat Color Picker - for both synths and team members */}
+          {(synth || teamMember) && canEditBasicFields && (
+            <div>
+              <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1 block">Chat Color</label>
+              <ColorPicker
+                value={editedChatColor}
+                onChange={(color) => {
+                  setEditedChatColor(color);
+                  if (isUpdateSuccessful) {
+                    setIsUpdateSuccessful(false);
+                  }
+                }}
+                disabled={!canEditBasicFields}
+              />
+            </div>
+          )}
 
           {/* Prompt section - now takes up most of the space */}
           <div className="flex-grow flex flex-col min-h-0">

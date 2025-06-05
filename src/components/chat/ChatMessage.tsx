@@ -1,8 +1,10 @@
-import React from 'react';
-import { ChatMessage as ChatMessageType, AIEmployee } from '@/types';
+import React, { useState } from 'react';
+import { ChatMessage as ChatMessageType, AIEmployee, TeamMember } from '@/types';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, X } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import MarkdownRenderer from './MarkdownRenderer';
 import { getRoleInfo } from '@/lib/roleColors';
 
@@ -11,51 +13,82 @@ interface ChatMessageProps {
   isDemo?: boolean;
   employees?: AIEmployee[];
   onRemoveMessage?: (messageId: string) => void;
+  onUpdateSynthModel?: (synthId: string, newModel: string) => void;
+  teamMembers?: TeamMember[];
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, isDemo = false, employees = [], onRemoveMessage }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ 
+  message, 
+  isDemo = false, 
+  employees = [], 
+  onRemoveMessage,
+  onUpdateSynthModel,
+  teamMembers = []
+}) => {
   const isUserMessage = message.sender === 'user';
   const formattedTime = format(message.timestamp, 'h:mm a');
+  const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
+  
+  // Get current synth model from team members (live data) instead of message data (historical)
+  const getCurrentSynthModel = () => {
+    if (!message.aiEmployee) return null;
+    
+    const currentTeamMember = teamMembers.find(member => member.id === message.aiEmployee?.id);
+    return currentTeamMember?.model || message.aiEmployee.model;
+  };
+  
+  const currentModel = getCurrentSynthModel();
   
   const getModelInfo = (model: string) => {
     switch (model) {
-      case 'gpt-4o':
-        return {
-          display: 'GPT-4o'
-        };
-      case 'gpt-4o-mini':
-        return {
-          display: 'GPT-4o Mini'
-        };
-      case 'o3-mini':
-        return {
-          display: 'o3 Mini'
-        };
+      case 'gpt-4.1-nano':
+        return { display: 'GPT-4.1 Nano' };
+      case 'o4-mini':
+        return { display: 'o4 Mini' };
+      case 'o3':
+        return { display: 'o3' };
       case 'o1':
-        return {
-          display: 'o1'
-        };
+        return { display: 'o1' };
+      case 'gpt-4.1':
+        return { display: 'GPT-4.1' };
+      case 'gpt-4o':
+        return { display: 'GPT-4o' };
+      case 'gpt-4o-mini':
+        return { display: 'GPT-4o Mini' };
+      case 'o3-mini':
+        return { display: 'o3 Mini' };
       case 'o1-mini':
-        return {
-          display: 'o1 Mini'
-        };
+        return { display: 'o1 Mini' };
+      case 'chatgpt-4o-latest':
+        return { display: 'ChatGPT-4o Latest' };
       case 'claude-3-5-sonnet':
-        return {
-          display: 'Claude 3.5'
-        };
+        return { display: 'Claude 3.5' };
+      case 'claude-4-sonnet':
+        return { display: 'Claude 4 Sonnet' };
+      case 'claude-4-opus':
+        return { display: 'Claude 4 Opus' };
       case 'claude-3-opus':
-        return {
-          display: 'Claude 3 Opus'
-        };
+        return { display: 'Claude 3 Opus' };
+      case 'sonar':
+        return { display: 'Perplexity Sonar' };
+      case 'sonar-pro':
+        return { display: 'Perplexity Sonar Pro' };
+      case 'sonar-reasoning':
+        return { display: 'Perplexity Sonar Reasoning' };
+      case 'sonar-reasoning-pro':
+        return { display: 'Perplexity Sonar Reasoning Pro' };
       case 'gemini-1.5-pro':
-        return {
-          display: 'Gemini 1.5'
-        };
+        return { display: 'Gemini 1.5' };
       default:
-        return {
-          display: model
-        };
+        return { display: model };
     }
+  };
+
+  const handleModelChange = (newModel: string) => {
+    if (message.aiEmployee && onUpdateSynthModel) {
+      onUpdateSynthModel(message.aiEmployee.id, newModel);
+    }
+    setIsModelSelectorOpen(false);
   };
 
   const renderMessageContent = () => {
@@ -98,8 +131,23 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isDemo = false, empl
     );
   };
 
-  const modelInfo = message.aiEmployee ? getModelInfo(message.aiEmployee.model) : null;
+  const modelInfo = message.aiEmployee && currentModel ? getModelInfo(currentModel) : null;
   const roleInfo = message.aiEmployee ? getRoleInfo(message.aiEmployee.role) : null;
+
+  // Get custom chat color from synth data
+  const getCustomChatColor = () => {
+    if (!message.aiEmployee) return null;
+    
+    // Try to find the synth in employees array first
+    const synth = employees.find(emp => emp.id === message.aiEmployee?.id);
+    if (synth?.chatColor) return synth.chatColor;
+    
+    // If not found in employees, try teamMembers array
+    const teamMember = teamMembers?.find(member => member.id === message.aiEmployee?.id);
+    return teamMember?.chatColor;
+  };
+
+  const customChatColor = getCustomChatColor();
 
   return (
     <div 
@@ -125,7 +173,47 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isDemo = false, empl
                   {roleInfo.display}
                 </Badge>
               )}
-              {modelInfo && (
+              {modelInfo && onUpdateSynthModel && !isDemo && (
+                <Popover open={isModelSelectorOpen} onOpenChange={setIsModelSelectorOpen}>
+                  <PopoverTrigger asChild>
+                    <button 
+                      className="text-xs text-neutral-500 hover:text-blue-600 dark:hover:text-blue-400 mr-2 cursor-pointer transition-colors underline decoration-dotted underline-offset-2"
+                      title="Click to change model"
+                    >
+                      {modelInfo.display}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" align="start">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                        Change AI Model for {message.aiEmployee?.name}
+                      </p>
+                      <Select value={currentModel || message.aiEmployee?.model} onValueChange={handleModelChange}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="gpt-4.1-nano">GPT-4.1 Nano</SelectItem>
+                          <SelectItem value="o4-mini">o4 Mini</SelectItem>
+                          <SelectItem value="o3">o3</SelectItem>
+                          <SelectItem value="o1">o1</SelectItem>
+                          <SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
+                          <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                          <SelectItem value="chatgpt-4o-latest">ChatGPT-4o Latest</SelectItem>
+                          <SelectItem value="claude-3-5-sonnet">Claude 3.5 Sonnet</SelectItem>
+                          <SelectItem value="claude-4-sonnet">Claude 4 Sonnet</SelectItem>
+                          <SelectItem value="claude-4-opus">Claude 4 Opus</SelectItem>
+                          <SelectItem value="sonar">Perplexity Sonar</SelectItem>
+                          <SelectItem value="sonar-pro">Perplexity Sonar Pro</SelectItem>
+                          <SelectItem value="sonar-reasoning">Perplexity Sonar Reasoning</SelectItem>
+                          <SelectItem value="sonar-reasoning-pro">Perplexity Sonar Reasoning Pro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+              {modelInfo && (!onUpdateSynthModel || isDemo) && (
                 <span className="text-xs text-neutral-500 mr-2">{modelInfo.display}</span>
               )}
               {message.isLoading && (
@@ -135,17 +223,26 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isDemo = false, empl
           </div>
         )}
         
-        <div className={`relative rounded-2xl px-5 py-5 ${
-          isUserMessage
-            ? 'bg-transparent border-4 border-neutral-200 text-black dark:text-white ml-4'
-            : `${roleInfo?.bgColor || 'bg-neutral-100 dark:bg-neutral-800'} text-neutral-900 dark:text-neutral-100 mr-4`
-        }`}>
+        <div 
+          className={`relative rounded-2xl px-5 py-5 shadow-none ${
+            isUserMessage
+              ? 'bg-transparent border-4 border-neutral-200 text-black dark:text-white ml-4'
+              : 'text-neutral-900 dark:text-neutral-100 mr-4'
+          }`}
+          style={
+            !isUserMessage && customChatColor
+              ? { backgroundColor: customChatColor + '20' }
+              : !isUserMessage
+              ? { backgroundColor: roleInfo?.bgColor || 'rgb(245 245 245)' }
+              : undefined
+          }
+        >
           {/* Remove button - positioned inside the message box */}
           {onRemoveMessage && !isDemo && !message.isLoading && (
             <button
               onClick={() => onRemoveMessage(message.id)}
               className={`absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 
-                p-1 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg z-10`}
+                p-1 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-sm z-10`}
               title="Remove message"
             >
               <X className="w-3 h-3" />

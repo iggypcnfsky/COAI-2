@@ -153,6 +153,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         profileImage: synthData.profileImage || '/default-avatar.png',
         model: synthData.baseModel || 'gpt-4',
         systemPrompt: synthData.systemPrompt || '',
+        chatColor: synthData.chatColor,
       };
     });
   }, [threadSynths]);
@@ -658,6 +659,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           experience: newSynth.experience,
           systemPrompt: newSynth.systemPrompt,
           baseModel: newSynth.baseModel,
+          chatColor: newSynth.chatColor,
           metadata: {}
         };
         
@@ -725,6 +727,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
             experience: updatedSynth.experience,
             systemPrompt: updatedSynth.systemPrompt,
             baseModel: updatedSynth.baseModel,
+            chatColor: updatedSynth.chatColor,
             metadata: {}
           }).catch(error => console.error('❌ Failed to update synth image in Supabase:', error));
           }
@@ -758,7 +761,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   }, [user, createSynth, updateSynth]);
 
   // Unified handler for editing both synths and team members
-  const handleUpdateProfile = React.useCallback(async (profile: AIEmployee | TeamMember, updates: { name?: string; role?: string; age?: number; gender?: 'male' | 'female' | 'non-binary' | 'any'; systemPrompt?: string; model?: string; baseModel?: AIEmployee['baseModel'] }) => {
+  const handleUpdateProfile = React.useCallback(async (profile: AIEmployee | TeamMember, updates: { name?: string; role?: string; age?: number; gender?: 'male' | 'female' | 'non-binary' | 'any'; systemPrompt?: string; model?: string; baseModel?: AIEmployee['baseModel']; chatColor?: string }) => {
     // Check if this is a team member or synth
     const isTeamMember = 'model' in profile && !('age' in profile);
     
@@ -770,7 +773,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         name: updates.name || member.name,
         role: updates.role || member.role,
         model: updates.model || member.model,
-        systemPrompt: updates.systemPrompt !== undefined ? updates.systemPrompt : member.systemPrompt
+        systemPrompt: updates.systemPrompt !== undefined ? updates.systemPrompt : member.systemPrompt,
+        chatColor: updates.chatColor || member.chatColor
       };
       
       // Update local state first for immediate UI update
@@ -809,7 +813,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
                 name: updatedMember.name,
                 role: updatedMember.role,
                 systemPrompt: updatedMember.systemPrompt,
-                baseModel: updatedMember.model as any
+                baseModel: updatedMember.model as any,
+                chatColor: updatedMember.chatColor
               };
               
               try {
@@ -832,7 +837,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
                 systemPrompt: updatedMember.systemPrompt,
                 name: updatedMember.name,
                 role: updatedMember.role,
-                profileImage: updatedMember.profileImage
+                profileImage: updatedMember.profileImage,
+                chatColor: updatedMember.chatColor
               }
             };
             
@@ -858,7 +864,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         age: updates.age || synth.age,
         gender: updates.gender || synth.gender,
         systemPrompt: updates.systemPrompt !== undefined ? updates.systemPrompt : synth.systemPrompt,
-        baseModel: updates.baseModel || synth.baseModel
+        baseModel: updates.baseModel || synth.baseModel,
+        chatColor: updates.chatColor || synth.chatColor
       };
       
       // Update local state first for immediate UI update
@@ -885,6 +892,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
             experience: updatedSynth.experience,
             systemPrompt: updatedSynth.systemPrompt,
             baseModel: updatedSynth.baseModel,
+            chatColor: updatedSynth.chatColor,
             metadata: {}
           };
           
@@ -1015,6 +1023,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               experience: synth.experience,
               systemPrompt: synth.systemPrompt,
               baseModel: synth.baseModel,
+              chatColor: synth.chatColor,
               metadata: {}
             };
             
@@ -1147,6 +1156,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
                   experience: synth.experience,
                   systemPrompt: synth.systemPrompt,
                   baseModel: synth.baseModel,
+                  chatColor: synth.chatColor,
                   metadata: {}
                 });
               }).catch(error => console.error('❌ Synth image generation failed for', synth.name, ':', error));
@@ -1313,7 +1323,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               originalMemberId: employeeId,
               name: employee.name,
               role: employee.role,
-              profileImage: employee.profileImage
+              profileImage: employee.profileImage,
+              chatColor: employee.chatColor
             }
           };
           
@@ -1411,7 +1422,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               originalMemberId: employeeId,
               name: employee.name,
               role: employee.role,
-              profileImage: employee.profileImage
+              profileImage: employee.profileImage,
+              chatColor: employee.chatColor
             }
           };
           
@@ -1425,7 +1437,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               const updatedSynthData: Partial<COAISynthData> = {
                 ...existingCustomSynth,
                 systemPrompt: employee.systemPrompt,
-                baseModel: employee.baseModel
+                baseModel: employee.baseModel,
+                chatColor: employee.chatColor
               };
               
               try {
@@ -1472,6 +1485,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         profileImage: synth.profileImage || '/default-avatar.png',
         model: synth.baseModel || 'gpt-4',
         systemPrompt: synth.systemPrompt || '',
+        chatColor: synth.chatColor,
       }));
 
     if (newTeamMembers.length === 0) {
@@ -1600,7 +1614,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
                 originalMemberId: synthId,
                 name: synth.name,
                 role: synth.role,
-                profileImage: synth.profileImage
+                profileImage: synth.profileImage,
+                chatColor: synth.chatColor
               }
             };
             
@@ -1999,6 +2014,61 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     }
   }, [activeThreadId, setMessages, setTeams]);
 
+  // Handle synth model update from chat messages
+  const handleUpdateSynthModel = React.useCallback(async (synthId: string, newModel: string) => {
+    if (!activeThreadId || !user) {
+      console.warn('Cannot update synth model: no active thread or user not authenticated');
+      return;
+    }
+
+    try {
+      // Find the synth in the current thread
+      const threadSynth = threadSynths.find(synth => synth.id === synthId);
+      if (!threadSynth) {
+        console.warn('Synth not found in current thread:', synthId);
+        return;
+      }
+
+      // Update the thread synth reference with the new model
+      const updatedReference: Partial<COAITeamSynthReference> = {
+        metadata: {
+          ...threadSynth.synth_data,
+          baseModel: newModel as any,
+          model: newModel
+        }
+      };
+
+      await updateThreadSynthReference(activeThreadId, synthId, updatedReference);
+      
+      // Also update the custom synth data if it's a custom synth
+      const isCustomSynth = customSynths.some(synth => synth.id === synthId);
+      if (isCustomSynth) {
+        const customSynth = customSynths.find(synth => synth.id === synthId);
+        if (customSynth) {
+          const updatedSynthData: Partial<COAISynthData> = {
+            ...customSynth,
+            baseModel: newModel as any,
+            chatColor: customSynth.chatColor
+          };
+          
+          await updateSynth(synthId, updatedSynthData);
+          
+          // Update local state
+          setCustomSynths(prev => 
+            prev.map(s => s.id === synthId ? { ...s, baseModel: newModel as any } : s)
+          );
+        }
+      }
+
+      // Refresh thread synths to update the UI
+      refetchThreadSynths();
+      
+      console.log('✅ Synth model updated successfully:', synthId, 'to', newModel);
+    } catch (error) {
+      console.error('❌ Failed to update synth model:', error);
+    }
+  }, [activeThreadId, user, threadSynths, customSynths, updateThreadSynthReference, updateSynth, refetchThreadSynths]);
+
   // Global keyboard shortcuts for team switching, AI continuation, and browser toggle
   useEffect(() => {
     const handleKeyPress = (event: KeyboardEvent) => {
@@ -2190,6 +2260,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
             onSendMessage={handleSendMessage}
             onAIContinue={handleAIContinue}
             onRemoveMessage={handleRemoveMessage}
+            onUpdateSynthModel={handleUpdateSynthModel}
             employees={customSynths}
             threads={teams}
             activeThreadId={activeThreadId}

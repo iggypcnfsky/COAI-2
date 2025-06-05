@@ -14,6 +14,7 @@ export interface AIEmployee {
   baseModel: 'gpt-4.1-nano' | 'o4-mini' | 'o3' | 'o1' | 'gpt-4.1' | 'gpt-4o' | 'chatgpt-4o-latest' | 'claude-3-5-sonnet' | 'claude-4-sonnet' | 'claude-4-opus' | 'sonar' | 'sonar-pro' | 'sonar-reasoning' | 'sonar-reasoning-pro';
   isLoadingImage?: boolean; // Flag to indicate if profile image is still being generated
   isPublic?: boolean; // Flag to indicate if this synth is publicly visible
+  chatColor?: string; // Custom color for chat messages
 }
 
 // Pagination options for fetching data
@@ -53,6 +54,7 @@ export interface ChatMessage {
 export type TeamMember = Pick<AIEmployee, 'id' | 'name' | 'role' | 'profileImage'> & {
   model: string;
   systemPrompt: string;
+  chatColor?: string;
 };
 
 // Team type definition
@@ -111,6 +113,7 @@ export interface COAISynthData {
   systemPrompt: string;
   baseModel: 'gpt-4.1-nano' | 'o4-mini' | 'o3' | 'o1' | 'gpt-4.1' | 'gpt-4o' | 'chatgpt-4o-latest' | 'claude-3-5-sonnet' | 'claude-4-sonnet' | 'claude-4-opus' | 'sonar' | 'sonar-pro' | 'sonar-reasoning' | 'sonar-reasoning-pro';
   isPublic?: boolean;
+  chatColor?: string; // Custom color for chat messages
   metadata?: Record<string, any>;
 }
 

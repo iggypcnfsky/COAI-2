@@ -50,6 +50,7 @@ interface ChatSectionProps {
   onUploadImage?: (file: File) => void;
   onAIContinue?: () => void;
   onRemoveMessage?: (messageId: string) => void;
+  onUpdateSynthModel?: (synthId: string, newModel: string) => void;
   employees: AIEmployee[];
   threads: Team[];
   activeThreadId: string | null;
@@ -73,6 +74,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
   onUploadImage,
   onAIContinue: propsAIContinue,
   onRemoveMessage: propsRemoveMessage,
+  onUpdateSynthModel,
   employees,
   threads,
   activeThreadId,
@@ -495,6 +497,8 @@ const ChatSection: React.FC<ChatSectionProps> = ({
                   message={message} 
                   employees={employees}
                   onRemoveMessage={handleRemoveMessage}
+                  onUpdateSynthModel={onUpdateSynthModel}
+                  teamMembers={teamMembers}
                 />
               ))}
               {isWaitingForStream && (

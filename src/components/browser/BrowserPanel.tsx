@@ -15,6 +15,7 @@ import CreateTeamModal, { CustomTeam } from './CreateTeamModal';
 import { AIEmployee } from '@/types';
 import { generateAISynth, generateAITeam } from '@/lib/api-utils';
 import { useAuth } from '@/hooks/store/useAuth';
+import { getRandomChatColor } from '@/lib/utils/colors';
 
 interface BrowserPanelProps {
   employees?: AIEmployee[];
@@ -246,6 +247,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
         profileImage: generatedSynthData.profileImage, // This is now a placeholder
         bio: generatedSynthData.bio,
         experience: generatedSynthData.experience,
+        chatColor: getRandomChatColor(),
         isLoadingImage: true, // Set to true - useEffect will handle background image generation
       };
 
@@ -382,6 +384,7 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
             profileImage: member.profileImage,
             bio: member.bio,
             experience: member.experience,
+            chatColor: getRandomChatColor(),
           };
         }
       });
