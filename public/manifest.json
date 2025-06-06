@@ -1,0 +1,41 @@
+{
+  "name": "COAI - AI Team Collaboration Platform",
+  "short_name": "COAI",
+  "description": "Collaborate with AI synths in teams and conversations",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "business", "collaboration"],
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Chat",
+      "short_name": "Chat",
+      "description": "Start a new conversation",
+      "url": "/?action=new-chat",
+      "icons": [{ "src": "/icons/chat-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Create Synth",
+      "short_name": "Synth",
+      "description": "Create a new AI synth",
+      "url": "/?action=create-synth",
+      "icons": [{ "src": "/icons/synth-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+} 
