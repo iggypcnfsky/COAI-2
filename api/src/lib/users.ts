@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { profiles, users } from '../db/schema.js';
+import { DEFAULT_MODEL_ID } from '../../../shared/models.js';
 
 export async function ensureUser(input: {
   clerkId: string;
@@ -38,7 +39,7 @@ export async function ensureUser(input: {
       preferences: {
         theme: 'auto',
         notifications: true,
-        defaultModel: 'claude-3-5-sonnet',
+        defaultModel: DEFAULT_MODEL_ID,
       },
     },
   }).onConflictDoNothing();

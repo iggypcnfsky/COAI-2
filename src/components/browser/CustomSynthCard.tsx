@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Trash2, Loader2, PlusCircle } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AIEmployee } from '@/types';
-
+import { PersonAvatar } from '@/components/ui/PersonAvatar';
+import { modelLabel } from '@/components/ModelSelect';
 
 interface CustomSynthCardProps {
   employee: AIEmployee;
@@ -18,43 +18,42 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
   onClick,
   onQuickAdd,
   onDelete,
-
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-
+  const modelName = employee.baseModel ? modelLabel(employee.baseModel) : null;
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('application/json', JSON.stringify(employee));
     e.dataTransfer.effectAllowed = 'copy';
     setIsDragging(true);
-    
-    // Create a custom drag image that looks like a mini employee card
+
     const dragElement = document.createElement('div');
     dragElement.style.position = 'absolute';
     dragElement.style.top = '-1000px';
-    dragElement.style.width = '200px';
-    dragElement.style.height = '120px';
-    dragElement.style.background = `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.6)), url(${employee.profileImage})`;
-    dragElement.style.backgroundSize = 'cover';
-    dragElement.style.backgroundPosition = 'center';
+    dragElement.style.width = '240px';
+    dragElement.style.height = '48px';
+    dragElement.style.background = 'white';
+    dragElement.style.border = '1px solid #e5e5e5';
     dragElement.style.borderRadius = '8px';
-    dragElement.style.color = 'white';
+    dragElement.style.color = '#171717';
     dragElement.style.display = 'flex';
-    dragElement.style.flexDirection = 'column';
-    dragElement.style.justifyContent = 'flex-end';
-    dragElement.style.padding = '12px';
-    dragElement.style.fontSize = '14px';
+    dragElement.style.alignItems = 'center';
+    dragElement.style.gap = '10px';
+    dragElement.style.padding = '0 10px';
+    dragElement.style.fontSize = '13px';
     dragElement.style.fontWeight = '600';
-    dragElement.style.textShadow = '0 1px 2px rgba(0,0,0,0.8)';
+    dragElement.style.boxShadow = '0 8px 20px rgba(0,0,0,0.12)';
     dragElement.innerHTML = `
-      <div style="margin-bottom: 4px;">${employee.name}</div>
-      <div style="font-size: 12px; opacity: 0.9; font-weight: 400; display: inline-block; padding: 4px 8px; background: rgba(0,0,0,0.6); border-radius: 4px;">${employee.role}</div>
+      <div style="width:32px;height:32px;border-radius:9999px;background:url(${employee.profileImage}) center/cover #e5e5e5;flex-shrink:0;"></div>
+      <div style="min-width:0;flex:1;">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${employee.name}</div>
+        <div style="font-size:11px;opacity:0.65;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${employee.role}${modelName ? ` · ${modelName}` : ''}</div>
+      </div>
     `;
-    
+
     document.body.appendChild(dragElement);
-    e.dataTransfer.setDragImage(dragElement, 100, 60);
-    
-    // Remove the element after a short delay
+    e.dataTransfer.setDragImage(dragElement, 24, 24);
+
     setTimeout(() => {
       document.body.removeChild(dragElement);
     }, 100);
@@ -69,8 +68,6 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
     onQuickAdd(employee);
   };
 
-
-
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onDelete) {
@@ -78,81 +75,68 @@ const CustomSynthCard: React.FC<CustomSynthCardProps> = ({
     }
   };
 
-
-
   return (
-    <Card 
-      className={`group relative overflow-hidden h-56 cursor-pointer transition-all duration-300 hover:shadow-xl ${
-        isDragging ? 'opacity-50 scale-95' : ''
+    <div
+      className={`group flex items-center gap-3 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/70 ${
+        isDragging ? 'opacity-50' : ''
       }`}
       onClick={() => onClick(employee)}
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      {/* Full background image */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${employee.profileImage})` }}
-      >
-        {/* Dark overlay for better text readability */}
-        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors duration-300" />
+      <div className="relative shrink-0">
+        <PersonAvatar
+          name={employee.name}
+          src={employee.profileImage}
+          className="h-10 w-10"
+        />
+        {employee.isLoadingImage && (
+          <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
+            <Loader2 className="h-4 w-4 animate-spin text-white" />
+          </div>
+        )}
       </div>
 
-      {/* Loading overlay for image generation */}
-      {employee.isLoadingImage && (
-        <div className="absolute inset-0 z-30 bg-black/40 backdrop-blur-sm flex items-center justify-center">
-          <div className="text-center text-white">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-            <p className="text-sm font-medium">Generating image...</p>
-          </div>
-        </div>
-      )}
-      
-      {/* Content overlay */}
-      <div className="relative h-full flex flex-col justify-between p-3 text-white z-20">
-        {/* Top section with name and action buttons */}
-        <div className="flex justify-between items-start">
-          <h3 className="font-semibold text-lg leading-tight text-white drop-shadow-lg">
-            {employee.name}
-          </h3>
-          <div className="flex gap-2 relative z-10">
-            {/* Image regeneration button - removed per request */}
-            
-
-            {/* Delete button for custom synths */}
-            {onDelete && (
-              <Button
-                size="icon"
-                variant="secondary"
-                className="h-8 w-8 bg-white/20 hover:bg-red-500/80 backdrop-blur-sm border-0 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300"
-                onClick={handleDelete}
-                title="Delete synth"
-              >
-                <Trash2 className="h-4 w-4 text-white" />
-              </Button>
-            )}
-            {/* Quick add button */}
-            <Button 
-              size="icon" 
-              variant="secondary"
-              className="h-8 w-8 bg-white/20 hover:bg-white/30 backdrop-blur-sm border-0 md:opacity-0 md:group-hover:opacity-100 transition-all duration-300"
-              onClick={handleQuickAdd}
-            >
-              <PlusCircle className="h-4 w-4 text-white" />
-            </Button>
-          </div>
-        </div>
-        
-        {/* Bottom section with role */}
-        <div className="flex justify-start">
-          <span className="inline-block text-xs text-white font-medium px-2 py-1 bg-black/60 backdrop-blur-md rounded-md">
-            {employee.role}
-          </span>
-        </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate leading-tight">
+          {employee.name}
+        </p>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
+          <span>{employee.role}</span>
+          {modelName && (
+            <>
+              <span className="mx-1.5 text-neutral-300 dark:text-neutral-600">·</span>
+              <span>{modelName}</span>
+            </>
+          )}
+        </p>
       </div>
-    </Card>
+
+      <div className="flex items-center gap-0.5 shrink-0 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+        {onDelete && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+            onClick={handleDelete}
+            title="Delete synth"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7 text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+          onClick={handleQuickAdd}
+          title="Add to chat"
+        >
+          <PlusCircle className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
   );
 };
 
-export default CustomSynthCard; 
+export default CustomSynthCard;

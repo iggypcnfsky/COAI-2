@@ -2,22 +2,11 @@
 
 // AI Employee type definition
 export type BaseModelId =
-  | 'gpt-4.1-nano'
-  | 'o4-mini'
-  | 'o3'
-  | 'o1'
-  | 'gpt-4.1'
-  | 'gpt-4o'
-  | 'chatgpt-4o-latest'
-  | 'claude-3-5-sonnet'
-  | 'claude-4-sonnet'
-  | 'claude-4-opus'
-  | 'sonar'
-  | 'sonar-pro'
-  | 'sonar-reasoning'
-  | 'sonar-reasoning-pro'
-  | 'gemini-2.5-flash'
-  | 'gemini-2.5-pro'
+  | 'gpt-5.6-luna'
+  | 'gpt-oss-safeguard-20b'
+  | 'claude-sonnet-5'
+  | 'kimi-k3'
+  | 'gemini-3.7-flash'
   | string;
 
 export interface AIEmployee {
@@ -61,6 +50,7 @@ export interface ChatMessage {
   // Image support
   image?: {
     url: string;
+    key?: string;
     base64?: string;
     name: string;
     size: number;
@@ -109,6 +99,7 @@ export interface COAIProfileData {
     theme?: 'light' | 'dark' | 'auto';
     notifications?: boolean;
     defaultModel?: string;
+    hiddenModelIds?: string[];
   };
   apiKeys?: {
     openai?: string;
@@ -181,6 +172,7 @@ export interface COAIMessageData {
   };
   image?: {
     url: string;
+    key?: string;
     base64?: string;
     name: string;
     size: number;

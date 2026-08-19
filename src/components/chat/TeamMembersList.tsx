@@ -5,6 +5,7 @@ import { X, ChevronDown, ChevronRight } from 'lucide-react';
 import { TeamMember } from '@/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { getRoleTeamBadgeColor } from '@/lib/roleColors';
+import { PersonAvatar } from '@/components/ui/PersonAvatar';
 
 interface TeamMembersListProps {
   teamMembers: TeamMember[];
@@ -117,10 +118,10 @@ const TeamMemberBadge: React.FC<{
       style={customStyle}
       onClick={() => onSelect?.(member)}
     >
-      <img
+      <PersonAvatar
+        name={member.name}
         src={member.profileImage}
-        alt={member.name}
-        className="w-6 h-6 rounded-full object-cover"
+        className="h-6 w-6"
       />
       <span className="text-xs font-medium">{member.name}</span>
       <span className="text-xs text-neutral-500">{member.role}</span>

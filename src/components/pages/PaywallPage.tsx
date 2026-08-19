@@ -10,14 +10,12 @@ export function PaywallPage() {
 
   return (
     <AuthPageFrame>
-      <div className="max-w-md text-center space-y-6">
-        <p className="text-sm uppercase tracking-[0.3em] text-[#c4a574]">Billing</p>
-        <h1 className="font-serif text-4xl">Your trial or subscription needs attention</h1>
-        <p className="text-[#a8a29a]">Update your payment method or restart a plan to keep using COAI.</p>
-        <div className="flex flex-col gap-3">
-          <Button onClick={openPortal} className="bg-[#c4a574] text-[#0b0b0c] hover:bg-[#d4b98a]">
-            Manage billing
-          </Button>
+      <div className="w-full max-w-md space-y-5 rounded-lg border border-neutral-200 bg-white p-6 text-center">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">Billing</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Your trial or subscription needs attention</h1>
+        <p className="text-sm text-neutral-500">Update your payment method or restart a plan to keep using COAI.</p>
+        <div className="flex flex-col gap-2">
+          <Button onClick={openPortal}>Manage billing</Button>
           <Button variant="ghost" onClick={() => window.location.assign('/subscribe')}>
             Start a new trial
           </Button>

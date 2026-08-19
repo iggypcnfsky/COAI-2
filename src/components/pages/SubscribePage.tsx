@@ -86,27 +86,20 @@ export function SubscribePage() {
 
   return (
     <AuthPageFrame>
-      <div className="max-w-md text-center space-y-4 font-sans">
-        <p className="text-sm uppercase tracking-[0.3em] text-[#c4a574]">Start trial</p>
-        <h1 className="font-serif text-4xl">
+      <div className="w-full max-w-md space-y-4 rounded-lg border border-neutral-200 bg-white p-6 text-center">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">Start trial</p>
+        <h1 className="text-2xl font-semibold tracking-tight">
           {!isLoaded ? 'Loading…' : isSignedIn ? 'Redirecting to checkout' : 'Sign in to start a trial'}
         </h1>
-        <p className="text-[#a8a29a]">Card on file, 14 days free, then a monthly subscription for platform access.</p>
-        {error && <p className="text-red-400 text-sm">{error}</p>}
+        <p className="text-sm text-neutral-500">Card on file, 14 days free, then a monthly subscription for platform access.</p>
+        {error && <p className="text-sm text-red-600">{error}</p>}
         {isLoaded && !isSignedIn && (
-          <Link
-            to="/sign-in"
-            className="inline-flex items-center px-7 py-3 bg-[#c4a574] text-[#0b0b0c] font-medium tracking-wide hover:bg-[#d4b98a]"
-          >
-            Sign in
-          </Link>
+          <Button asChild>
+            <Link to="/sign-in">Sign in</Link>
+          </Button>
         )}
         {error && isSignedIn && (
-          <Button
-            onClick={() => void startCheckout()}
-            disabled={busy}
-            className="bg-[#c4a574] text-[#0b0b0c] hover:bg-[#d4b98a]"
-          >
+          <Button onClick={() => void startCheckout()} disabled={busy}>
             {busy ? 'Retrying…' : 'Continue'}
           </Button>
         )}

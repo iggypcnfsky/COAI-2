@@ -1,5 +1,5 @@
 import { config } from 'dotenv';
-config();
+config({ override: true });
 
 function required(name: string): string {
   const value = process.env[name];
@@ -55,12 +55,18 @@ export const env = {
   clerkSecretKey: required('CLERK_SECRET_KEY'),
   clerkWebhookSecret: optional('CLERK_WEBHOOK_SIGNING_SECRET', ''),
   openrouterApiKey: required('OPENROUTER_API_KEY'),
+  replicateApiToken: optional('REPLICATE_API_TOKEN', '').trim(),
   encryptionKey: required('APP_ENCRYPTION_KEY'),
   stripeMode,
   stripeSecretKey,
   stripeWebhookSecret: pickStripeValue(stripeMode, 'STRIPE_WEBHOOK_SECRET', false),
   stripePriceId: pickStripeValue(stripeMode, 'STRIPE_PRICE_ID', true),
   stripeTrialDays: Number(optional('STRIPE_TRIAL_DAYS', '14')),
+  s3Endpoint: optional('S3_ENDPOINT', ''),
+  s3AccessKeyId: optional('S3_ACCESS_KEY_ID', ''),
+  s3SecretAccessKey: optional('S3_SECRET_ACCESS_KEY', ''),
+  s3Bucket: optional('S3_BUCKET', ''),
+  s3Region: optional('S3_REGION', 'auto'),
 };
 
 export const ACTIVE_SUB_STATUSES = new Set(['trialing', 'active']);

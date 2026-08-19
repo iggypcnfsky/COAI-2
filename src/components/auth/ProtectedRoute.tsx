@@ -9,7 +9,11 @@ export function ProtectedRoute() {
   const onboardedAt = useAppStore((s) => s.onboardedAt);
 
   if (!isLoaded) {
-    return <div className="min-h-screen grid place-items-center bg-[#0b0b0c] text-[#e8e2d6]">Loading…</div>;
+    return (
+      <div className="grid min-h-screen place-items-center bg-white text-sm text-neutral-500">
+        Loading…
+      </div>
+    );
   }
   if (!isSignedIn) {
     return <Navigate to="/sign-in" replace state={{ from: location }} />;

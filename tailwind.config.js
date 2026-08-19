@@ -10,8 +10,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        serif: ['Fraunces', 'Georgia', 'serif'],
-        sans: ['IBM Plex Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['"Google Sans Flex"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         lg: 'var(--radius)',

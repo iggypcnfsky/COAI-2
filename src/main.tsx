@@ -27,9 +27,26 @@ createRoot(document.getElementById('root')!).render(
       signUpFallbackRedirectUrl="/start"
       appearance={{
         variables: {
-          colorBackground: '#0b0b0c',
-          colorPrimary: '#c4a574',
-          borderRadius: '0.25rem',
+          colorPrimary: '#2563eb',
+          colorBackground: '#ffffff',
+          colorForeground: '#171717',
+          colorMutedForeground: '#737373',
+          colorNeutral: '#737373',
+          colorInput: '#ffffff',
+          colorInputForeground: '#171717',
+          colorBorder: '#e5e5e5',
+          borderRadius: '0.5rem',
+          fontFamily: '"Google Sans Flex", ui-sans-serif, system-ui, sans-serif',
+          fontFamilyButtons: '"Google Sans Flex", ui-sans-serif, system-ui, sans-serif',
+        },
+        elements: {
+          card: {
+            boxShadow: 'none',
+            border: '1px solid #e5e5e5',
+          },
+          formButtonPrimary: {
+            boxShadow: 'none',
+          },
         },
       }}
     >

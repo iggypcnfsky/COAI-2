@@ -10,14 +10,7 @@ import MentionBadge from './MentionBadge';
 import FileMentionBadge from './FileMentionBadge';
 import { useMessageInput } from '@/hooks/store';
 import { useAppStore } from '@/stores/appStore';
-
-interface Document {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { PersonAvatar } from '@/components/ui/PersonAvatar';
 
 interface MessageInputWithMentionsProps {
   onSendMessage: (messageData: { display: string; full: string }, attachedImage?: any) => void;
@@ -28,7 +21,6 @@ interface MessageInputWithMentionsProps {
   isWaitingForStream?: boolean;
   incomingMessageCount?: number;
   globalSpacebarCount?: number;
-  onSetDocumentMentionHandler?: (handler: ((doc: Document) => void) | null) => void;
 }
 
 // Enhanced message input with mentions support
@@ -333,6 +325,10 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
       console.error('File is not an image');
       return;
     }
+    if (file.size > 8 * 1024 * 1024) {
+      console.error('Image must be 8MB or smaller');
+      return;
+    }
     
     // Convert to base64 for preview
     const reader = new FileReader();
@@ -406,51 +402,6 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
       
       if (imageFile) {
         processImageFile(imageFile);
-        return;
-      }
-      
-      // Then check if it's a document drop from the browser panel
-      const dragData = e.dataTransfer.getData('application/json');
-      
-      if (dragData) {
-        const parsedData = JSON.parse(dragData);
-        
-        if (parsedData.type === 'document' && parsedData.document) {
-          // Handle document drop by inserting mention
-          const doc = parsedData.document;
-          
-          // Add null check to prevent errors - check for document_data structure
-          if (!doc || !doc.document_data || !doc.document_data.title) {
-            return;
-          }
-          
-          const beforeCursor = message.substring(0, cursorPosition);
-          const afterCursor = message.substring(cursorPosition);
-          
-          // Create a document mention format with hidden content for AI context
-          const documentMention = `📄[${doc.document_data.title}]`;
-          const hiddenContext = `\n\n<!-- DOCUMENT_CONTEXT: 
-Document Title: "${doc.document_data.title}"
-Document ID: ${doc.id}
-Content: ${doc.document_data.content || 'No content available'}
-Created: ${doc.created_at || 'Unknown'}
-Updated: ${doc.updated_at || 'Unknown'}
--->`;
-          
-          const newText = `${beforeCursor}${documentMention}${hiddenContext} ${afterCursor}`;
-          const newCursorPosition = beforeCursor.length + documentMention.length + hiddenContext.length + 1;
-          
-          setMessage(newText);
-          setCursorPosition(newCursorPosition);
-          
-          // Focus the textarea and set cursor position
-          setTimeout(() => {
-            if (textareaRef.current) {
-              textareaRef.current.focus();
-              textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-            }
-          }, 0);
-        }
       }
     } catch (error) {
       console.error('Error handling drop:', error);
@@ -553,53 +504,6 @@ Updated: ${doc.updated_at || 'Unknown'}
       </div>
     );
   };
-
-  // Listen for custom document drop events from ChatSection
-  useEffect(() => {
-    const handleCustomDocumentDrop = (e: CustomEvent) => {
-      const doc = e.detail.document;
-      
-      // Add null check to prevent errors - check for document_data structure
-      if (!doc || !doc.document_data || !doc.document_data.title) {
-        return;
-      }
-      
-      const beforeCursor = message.substring(0, cursorPosition);
-      const afterCursor = message.substring(cursorPosition);
-      
-      // Create a document mention format with hidden content for AI context
-      const documentMention = `📄[${doc.document_data.title}]`;
-      const hiddenContext = `\n\n<!-- DOCUMENT_CONTEXT: 
-Document Title: "${doc.document_data.title}"
-Document ID: ${doc.id}
-Content: ${doc.document_data.content || 'No content available'}
-Created: ${doc.created_at || 'Unknown'}
-Updated: ${doc.updated_at || 'Unknown'}
--->`;
-      
-      const newText = `${beforeCursor}${documentMention}${hiddenContext} ${afterCursor}`;
-      const newCursorPosition = beforeCursor.length + documentMention.length + hiddenContext.length + 1;
-      
-      setMessage(newText);
-      setCursorPosition(newCursorPosition);
-      
-      // Focus the textarea and set cursor position
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus();
-          textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-        }
-      }, 0);
-    };
-
-    const container = document.querySelector('[data-message-input-container]');
-    if (container) {
-      container.addEventListener('documentDrop', handleCustomDocumentDrop as EventListener);
-      return () => {
-        container.removeEventListener('documentDrop', handleCustomDocumentDrop as EventListener);
-      };
-    }
-  }, [message, cursorPosition, setMessage, setCursorPosition]);
 
   return (
     <div className="p-3 border-t border-neutral-200 dark:border-neutral-800" data-message-input-container>
@@ -766,10 +670,10 @@ Updated: ${doc.updated_at || 'Unknown'}
                         index === selectedMentionIndex ? 'bg-accent' : ''
                       }`}
                     >
-                      <img
+                      <PersonAvatar
+                        name={employee.name}
                         src={employee.profileImage}
-                        alt={employee.name}
-                        className="w-8 h-8 rounded-full object-cover"
+                        className="h-8 w-8"
                       />
                       <div>
                         <div className="font-medium">{employee.name}</div>

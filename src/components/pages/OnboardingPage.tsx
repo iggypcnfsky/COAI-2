@@ -4,6 +4,7 @@ import { useAuth } from '@clerk/react';
 import { apiFetch } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useAppStore } from '@/stores/appStore';
 import { AuthPageFrame } from '@/components/auth/AuthControls';
 import { COAIProfile } from '@/types';
@@ -95,22 +96,25 @@ export function OnboardingPage() {
 
   return (
     <AuthPageFrame>
-      <form onSubmit={onSubmit} className="w-full max-w-md space-y-6 font-sans">
+      <form onSubmit={onSubmit} className="w-full max-w-md space-y-6 rounded-lg border border-neutral-200 bg-white p-6">
         <div className="space-y-2">
-          <p className="text-sm uppercase tracking-[0.3em] text-[#c4a574]">Onboarding</p>
-          <h1 className="font-serif text-4xl">What should we call you?</h1>
-          <p className="text-[#a8a29a]">You can skip this and change it later in your profile.</p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">Onboarding</p>
+          <h1 className="text-2xl font-semibold tracking-tight">What should we call you?</h1>
+          <p className="text-sm text-neutral-500">You can skip this and change it later in your profile.</p>
         </div>
-        <Input
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="Display name"
-          className="bg-transparent border-[#2a2a2c] h-12"
-        />
-        {error && <p className="text-red-400 text-sm">{error}</p>}
-        <div className="flex gap-3">
-          <Button type="submit" disabled={busy} className="flex-1 bg-[#c4a574] text-[#0b0b0c] hover:bg-[#d4b98a]">
-            {busy ? 'Saving…' : 'Enter COAI'}
+        <div className="space-y-2">
+          <Label htmlFor="display-name">Display name</Label>
+          <Input
+            id="display-name"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Display name"
+          />
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className="flex gap-2">
+          <Button type="submit" disabled={busy} className="flex-1">
+            {busy ? 'Saving…' : 'Enter the studio'}
           </Button>
           <Button type="button" variant="ghost" disabled={busy} onClick={() => finish()}>
             Skip

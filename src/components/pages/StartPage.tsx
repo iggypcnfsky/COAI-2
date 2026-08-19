@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api/client';
 import { useAppStore } from '@/stores/appStore';
 import { COAIProfile } from '@/types';
 import { AuthPageFrame } from '@/components/auth/AuthControls';
+import { Button } from '@/components/ui/button';
 
 const ACTIVE = new Set(['trialing', 'active']);
 
@@ -56,31 +57,28 @@ export function StartPage() {
 
   return (
     <AuthPageFrame>
-      <div className="text-center space-y-4 max-w-md">
-        <p className="text-sm uppercase tracking-[0.3em] text-[#c4a574]">COAI</p>
+      <div className="w-full max-w-md space-y-4 rounded-lg border border-neutral-200 bg-white p-6 text-center">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">COAI</p>
         {!isLoaded ? (
-          <h1 className="font-serif text-3xl">Loading…</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Loading…</h1>
         ) : !isSignedIn ? (
           <>
-            <h1 className="font-serif text-3xl">Sign in to open your studio</h1>
-            <Link
-              to="/sign-in"
-              className="inline-flex items-center px-7 py-3 bg-[#c4a574] text-[#0b0b0c] font-medium tracking-wide hover:bg-[#d4b98a]"
-            >
-              Sign in
-            </Link>
+            <h1 className="text-2xl font-semibold tracking-tight">Sign in to open your studio</h1>
+            <Button asChild>
+              <Link to="/sign-in">Sign in</Link>
+            </Button>
           </>
         ) : error ? (
           <>
-            <h1 className="font-serif text-3xl">Couldn’t open your account</h1>
-            <p className="text-red-400 text-sm">{error}</p>
-            <p className="text-[#a8a29a] text-sm">Sign out from the top right and try again, or continue home.</p>
-            <Link to="/" className="inline-flex text-sm uppercase tracking-widest text-[#c4a574]">
-              Home
-            </Link>
+            <h1 className="text-2xl font-semibold tracking-tight">Couldn’t open your account</h1>
+            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-neutral-500">Sign out from the account menu and try again, or continue home.</p>
+            <Button variant="outline" asChild>
+              <Link to="/">Home</Link>
+            </Button>
           </>
         ) : (
-          <h1 className="font-serif text-3xl">Opening your studio</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Opening your studio</h1>
         )}
       </div>
     </AuthPageFrame>

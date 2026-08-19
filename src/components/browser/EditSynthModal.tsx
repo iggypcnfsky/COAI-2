@@ -94,6 +94,7 @@ const EditSynthModal: React.FC<EditSynthModalProps> = ({
       const newImage = await generateSynthImage({
         name: formData.name,
         age: parseInt(formData.age) || 25,
+        gender: synth.gender,
         role: formData.role,
         systemPrompt: formData.systemPrompt,
         baseModel: formData.baseModel as AIEmployee['baseModel'],
@@ -279,7 +280,7 @@ const EditSynthModal: React.FC<EditSynthModalProps> = ({
                 <SelectValue placeholder="Select AI model" />
               </SelectTrigger>
               <SelectContent>
-                <ModelSelectItems />
+                <ModelSelectItems currentId={formData.baseModel} />
               </SelectContent>
             </Select>
           </div>

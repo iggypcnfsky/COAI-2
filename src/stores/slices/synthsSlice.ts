@@ -42,11 +42,14 @@ export const createSynthsSlice: StateCreator<
       // Normalize synths by ID
       const normalizedSynths = normalizeArray(synths as COAISynth[]);
       
-      // Update state with normalized synths
+      // Merge so thread-hydrated synths are not wiped if the list fetch races
       set((state) => ({
         entities: {
           ...state.entities,
-          synths: normalizedSynths
+          synths: {
+            ...state.entities.synths,
+            ...normalizedSynths
+          }
         },
         ui: {
           ...state.ui,
@@ -189,7 +192,17 @@ export const createSynthsSlice: StateCreator<
     // Get current synth
     const currentSynth = entities.synths[id];
     if (!currentSynth) {
-      throw new Error(`Synth with id ${id} not found`);
+      const serverUpdatedSynth = await httpDataService.updateSynth(id, updates);
+      set((state) => ({
+        entities: {
+          ...state.entities,
+          synths: {
+            ...state.entities.synths,
+            [id]: serverUpdatedSynth
+          }
+        }
+      }), false, 'synths/updateSynth/untracked');
+      return serverUpdatedSynth;
     }
     
     // Apply optimistic update

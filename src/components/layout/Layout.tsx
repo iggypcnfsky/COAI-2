@@ -17,6 +17,8 @@ import { useThreadSynths, useSynths, useTeams } from '@/hooks/store';
 import { COAITeamSynthReference, COAISynthData, COAITeamSynth } from '@/types';
 import { httpDataService, HttpDataService } from '@/lib/services/dataService';
 import { useAppStore } from '@/stores/appStore';
+import { DEFAULT_MODEL_ID } from '@shared/models';
+import { isPlaceholderImage } from '@/lib/api-utils';
 
 import { directService } from '@/lib/services/directService';
 
@@ -146,8 +148,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         id: synth.id,
         name: synthData.name || 'Unknown',
         role: synthData.role || 'Unknown',
-        profileImage: synthData.profileImage || '/default-avatar.png',
-        model: synthData.baseModel || 'gpt-4',
+        profileImage: synthData.profileImage || '',
+        model: synthData.baseModel || DEFAULT_MODEL_ID,
         systemPrompt: synthData.systemPrompt || '',
         chatColor: synthData.chatColor,
       };
@@ -170,9 +172,10 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           id: synth.id,
           name: synthData.name || 'Unknown',
           role: synthData.role || 'Unknown',
-          profileImage: synthData.profileImage || '/default-avatar.png',
-          model: synthData.baseModel || 'gpt-4',
+          profileImage: synthData.profileImage || '',
+          model: synthData.baseModel || DEFAULT_MODEL_ID,
           systemPrompt: synthData.systemPrompt || '',
+          chatColor: synthData.chatColor,
         };
       }).filter(Boolean) as TeamMember[];
     } catch (error) {
@@ -354,7 +357,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
              bio: synthData.bio,
              experience: synthData.experience,
              systemPrompt: synthRef.metadata?.systemPrompt || synthData.systemPrompt || '',
-             baseModel: (synthRef.metadata?.model || synthData.baseModel || 'gpt-4o') as AIEmployee['baseModel']
+             baseModel: (synthRef.metadata?.model || synthData.baseModel || DEFAULT_MODEL_ID) as AIEmployee['baseModel']
            } as AIEmployee;
                  } else {
            // Fallback to metadata
@@ -367,7 +370,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
              bio: 'Team member',
              experience: ['Professional'],
              systemPrompt: synthRef.metadata?.systemPrompt || '',
-             baseModel: (synthRef.metadata?.model || 'gpt-4o') as AIEmployee['baseModel']
+             baseModel: (synthRef.metadata?.model || DEFAULT_MODEL_ID) as AIEmployee['baseModel']
            } as AIEmployee;
          }
       });
@@ -444,20 +447,20 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           for (const supabaseSynth of convertedSynths) {
             const existingLocal = existingLocalSynths.get(supabaseSynth.id);
             if (existingLocal) {
-              // Merge: use Supabase data but preserve local-only properties
+              const remoteImage = supabaseSynth.profileImage;
+              const localImage = existingLocal.profileImage;
+              const keepLocalImage = !isPlaceholderImage(localImage) && isPlaceholderImage(remoteImage);
               mergedSynths.push({
                 ...supabaseSynth,
-                isLoadingImage: existingLocal.isLoadingImage, // Preserve loading state
+                profileImage: keepLocalImage ? localImage : remoteImage,
+                isLoadingImage: existingLocal.isLoadingImage || isPlaceholderImage(keepLocalImage ? localImage : remoteImage),
               });
               existingLocalSynths.delete(supabaseSynth.id); // Mark as processed
             } else {
-              // New synth from Supabase - check if it needs image loading
-              const synthWithLoadingState = {
+              mergedSynths.push({
                 ...supabaseSynth,
-                // If the synth has a placeholder image, mark it as loading
-                isLoadingImage: supabaseSynth.profileImage?.includes('placeholder') || supabaseSynth.profileImage?.includes('default') || false
-              };
-              mergedSynths.push(synthWithLoadingState);
+                isLoadingImage: isPlaceholderImage(supabaseSynth.profileImage),
+              });
             }
           }
           
@@ -491,6 +494,63 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       }
     }
   }, [user, userSynths]);
+
+  const portraitJobs = React.useRef(new Set<string>());
+
+  React.useEffect(() => {
+    for (const synth of customSynths) {
+      if (!isPlaceholderImage(synth.profileImage)) continue;
+      if (portraitJobs.current.has(synth.id)) continue;
+      portraitJobs.current.add(synth.id);
+
+      import('@/lib/api-utils').then(({ generateSynthImage }) => {
+        generateSynthImage({
+          name: synth.name,
+          age: synth.age,
+          gender: synth.gender,
+          role: synth.role,
+          bio: synth.bio,
+          systemPrompt: synth.systemPrompt,
+          baseModel: synth.baseModel,
+          profileImage: synth.profileImage,
+        }).then((imageUrl) => {
+          if (isPlaceholderImage(imageUrl)) {
+            setCustomSynths((prev) => prev.map((item) => (
+              item.id === synth.id ? { ...item, isLoadingImage: false } : item
+            )));
+            return;
+          }
+
+          setCustomSynths((prev) => prev.map((item) => (
+            item.id === synth.id ? { ...item, profileImage: imageUrl, isLoadingImage: false } : item
+          )));
+
+          if (user) {
+            updateSynth(synth.id, {
+              name: synth.name,
+              role: synth.role,
+              age: synth.age,
+              gender: synth.gender,
+              profileImage: imageUrl,
+              bio: synth.bio,
+              experience: synth.experience,
+              systemPrompt: synth.systemPrompt,
+              baseModel: synth.baseModel,
+              chatColor: synth.chatColor,
+              metadata: {},
+            }).catch((error) => console.error('Failed to persist generated image:', error));
+          }
+        }).catch((error) => {
+          console.error('Background image generation failed for', synth.name, error);
+          setCustomSynths((prev) => prev.map((item) => (
+            item.id === synth.id ? { ...item, isLoadingImage: false } : item
+          )));
+        });
+      }).catch((error) => {
+        console.error('Failed to start image generation for', synth.name, error);
+      });
+    }
+  }, [customSynths, user, updateSynth]);
 
   // Load data when user becomes authenticated
   useEffect(() => {
@@ -541,9 +601,10 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
                 id: synth.id,
                 name: synthData.name || 'Unknown',
                 role: synthData.role || 'Unknown',
-                profileImage: synthData.profileImage || '/default-avatar.png',
-                model: synthData.baseModel || 'gpt-4',
+                profileImage: synthData.profileImage || '',
+                model: synthData.baseModel || DEFAULT_MODEL_ID,
                 systemPrompt: synthData.systemPrompt || '',
+                chatColor: synthData.chatColor,
               };
             }).filter(Boolean) as TeamMember[];
           } catch (error) {
@@ -643,100 +704,26 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         
         const savedSynth = await createSynth(synthData);
         if (savedSynth) {
-          // Create the synth with the Supabase-generated ID
           finalSynth = {
             ...newSynth,
-            id: savedSynth.id
+            id: savedSynth.id,
+            isLoadingImage: true,
           };
-          
-          // For authenticated users, DON'T add to local state immediately
-          // Let the Supabase sync handle it entirely to prevent duplicates
-          // If no image loading needed, let the Supabase sync handle it entirely
         } else {
           console.error('❌ Failed to save synth to Supabase - no data returned');
-          // Fallback: add to local state anyway
-          setCustomSynths(prev => [finalSynth, ...prev]);
         }
       } catch (error) {
         console.error('❌ Failed to save synth to Supabase:', error);
-        // Fallback: add to local state anyway
-        setCustomSynths(prev => [finalSynth, ...prev]);
       }
-    } else {
-      // For unauthenticated users, add to local state immediately
-      setCustomSynths(prev => [finalSynth, ...prev]);
     }
-    
-    // Handle background image generation if needed
-    if (finalSynth.isLoadingImage) {
-      // Import the generateSynthImage function dynamically to avoid circular dependencies
-      import('@/lib/api-utils').then(({ generateSynthImage }) => {
-        generateSynthImage({
-          name: finalSynth.name,
-          age: finalSynth.age,
-          role: finalSynth.role,
-          bio: finalSynth.bio,
-          systemPrompt: finalSynth.systemPrompt,
-          baseModel: finalSynth.baseModel,
-          profileImage: finalSynth.profileImage, // Current placeholder
-        }).then((realProfileImage) => {
-          // Update the synth with the real image
-          const updatedSynth: AIEmployee = {
-            ...finalSynth,
-            profileImage: realProfileImage,
-            isLoadingImage: false,
-          };
-          
-          // Update in local state
-          setCustomSynths(prev => {
-            const updated = prev.map(synth => synth.id === finalSynth.id ? updatedSynth : synth);
-            return updated;
-          });
-          
-          // Update in Supabase if user is authenticated
-          if (user) {
-                      updateSynth(finalSynth.id, {
-            name: updatedSynth.name,
-            role: updatedSynth.role,
-            age: updatedSynth.age,
-            gender: updatedSynth.gender,
-            profileImage: realProfileImage,
-            bio: updatedSynth.bio,
-            experience: updatedSynth.experience,
-            systemPrompt: updatedSynth.systemPrompt,
-            baseModel: updatedSynth.baseModel,
-            chatColor: updatedSynth.chatColor,
-            metadata: {}
-          }).catch(error => console.error('❌ Failed to update synth image in Supabase:', error));
-          }
-        }).catch((imageError) => {
-          console.error('⚠️ Background image generation failed for:', finalSynth.name, imageError);
-          
-          // Remove loading state even if image generation failed
-          const updatedSynth: AIEmployee = {
-            ...finalSynth,
-            isLoadingImage: false,
-          };
-          
-          setCustomSynths(prev => 
-            prev.map(synth => synth.id === finalSynth.id ? updatedSynth : synth)
-          );
-        });
-      }).catch(error => {
-        console.error('❌ Failed to import generateSynthImage:', error);
-        
-        // Remove loading state if import fails
-        const updatedSynth: AIEmployee = {
-          ...finalSynth,
-          isLoadingImage: false,
-        };
-        
-        setCustomSynths(prev => 
-          prev.map(synth => synth.id === finalSynth.id ? updatedSynth : synth)
-        );
-      });
-    }
-  }, [user, createSynth, updateSynth]);
+
+    setCustomSynths((prev) => {
+      if (prev.some((synth) => synth.id === finalSynth.id)) {
+        return prev.map((synth) => synth.id === finalSynth.id ? { ...synth, ...finalSynth } : synth);
+      }
+      return [finalSynth, ...prev];
+    });
+  }, [user, createSynth]);
 
   // Unified handler for editing both synths and team members
   const handleUpdateProfile = React.useCallback(async (profile: AIEmployee | TeamMember, updates: { name?: string; role?: string; age?: number; gender?: 'male' | 'female' | 'non-binary' | 'any'; systemPrompt?: string; model?: string; baseModel?: AIEmployee['baseModel']; chatColor?: string }) => {
@@ -947,28 +934,33 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
 
   const handleSelectTeamMember = React.useCallback((member: TeamMember) => {
     setSelectedTeamMember(member);
-    setSelectedEmployee(null); // Clear employee selection
+    setSelectedEmployee(null);
+    setSelectedPremadeTeam(null);
+    setSelectedCustomTeam(null);
     setIsProfileCollapsed(false);
+    setIsBrowserCollapsed(false);
   }, []);
 
   // No auto-save needed - messages are saved immediately when created
 
   const handleSelectEmployee = React.useCallback((employee: AIEmployee) => {
     setSelectedEmployee(employee);
-    setSelectedTeamMember(null); // Clear team member selection
-    setSelectedPremadeTeam(null); // Clear premade team selection
-    setSelectedCustomTeam(null); // Clear custom team selection
+    setSelectedTeamMember(null);
+    setSelectedPremadeTeam(null);
+    setSelectedCustomTeam(null);
     setIsProfileCollapsed(false);
+    setIsBrowserCollapsed(false);
   }, []);
 
 
 
   const handleSelectCustomTeam = React.useCallback((team: CustomTeam) => {
     setSelectedCustomTeam(team);
-    setSelectedEmployee(null); // Clear employee selection
-    setSelectedTeamMember(null); // Clear team member selection
-    setSelectedPremadeTeam(null); // Clear premade team selection
+    setSelectedEmployee(null);
+    setSelectedTeamMember(null);
+    setSelectedPremadeTeam(null);
     setIsProfileCollapsed(false);
+    setIsBrowserCollapsed(false);
   }, []);
 
   const handleAddNewTeam = React.useCallback(async (newTeam: CustomTeam) => {
@@ -1075,6 +1067,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         import('@/lib/api-utils').then(({ generateTeamImage, generateSynthImage }) => {
           generateTeamImage({
             name: teamData.name,
+            description: teamData.description,
             teamImage: teamData.teamImage,
           }).then((teamImageUrl: string) => {
               // Update via the teams hook
@@ -1101,6 +1094,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
             const memberDataForImage = {
               name: synth.name,
               age: synth.age,
+              gender: synth.gender,
               role: synth.role,
               bio: synth.bio || `A ${synth.role}`,
               systemPrompt: synth.systemPrompt,
@@ -1245,9 +1239,10 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       id: employeeId,
       name: employee.name || 'Unknown Name',
       role: employee.role || 'Unknown Role',
-      profileImage: employee.profileImage || '/default-avatar.png',
-      model: employee.baseModel || 'gpt-4',
+      profileImage: employee.profileImage || '',
+      model: employee.baseModel || DEFAULT_MODEL_ID,
       systemPrompt: employee.systemPrompt || '',
+      chatColor: employee.chatColor,
     };
 
     // Add to local team members state for UI
@@ -1262,6 +1257,24 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       if (user) {
         try {
           const newThread = await directService.createThread(`Chat with ${employee.name}`);
+
+          const isCustomSynth = customSynths.some(synth => synth.id === employeeId);
+          const synthReference: COAITeamSynthReference = {
+            synthId: employeeId,
+            isCustom: isCustomSynth,
+            metadata: {
+              model: employee.baseModel || DEFAULT_MODEL_ID,
+              systemPrompt: employee.systemPrompt || '',
+              originalMemberId: employeeId,
+              name: employee.name,
+              role: employee.role,
+              profileImage: employee.profileImage,
+              chatColor: employee.chatColor
+            }
+          };
+
+          await addSynthToThread(newThread.id, employeeId, synthReference);
+
           setActiveThreadId(newThread.id);
           setMessages([]); // Clear messages when creating new thread
           
@@ -1276,26 +1289,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           };
           setTeams(prev => [...prev, newTeam]);
           
-          // Set active thread in Zustand store
           await switchThread(newThread.id);
-          
-          // Add the synth to the new thread
-          const isCustomSynth = customSynths.some(synth => synth.id === employeeId);
-          const synthReference: COAITeamSynthReference = {
-            synthId: employeeId,
-            isCustom: isCustomSynth,
-            metadata: {
-              model: employee.baseModel || 'gpt-4',
-              systemPrompt: employee.systemPrompt || '',
-              originalMemberId: employeeId,
-              name: employee.name,
-              role: employee.role,
-              profileImage: employee.profileImage,
-              chatColor: employee.chatColor
-            }
-          };
-          
-          await addSynthToThread(newThread.id, employeeId, synthReference);
         } catch (error) {
           console.error('❌ Failed to create thread or add synth:', error);
           // Fallback to local state only
@@ -1384,7 +1378,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
             synthId: employeeId,
             isCustom: isCustomSynth,
             metadata: {
-              model: employee.baseModel || 'gpt-4',
+              model: employee.baseModel || DEFAULT_MODEL_ID,
               systemPrompt: employee.systemPrompt || '',
               originalMemberId: employeeId,
               name: employee.name,
@@ -1449,8 +1443,8 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         id: synth.id,
         name: synth.name || 'Unknown Name',
         role: synth.role || 'Unknown Role',
-        profileImage: synth.profileImage || '/default-avatar.png',
-        model: synth.baseModel || 'gpt-4',
+        profileImage: synth.profileImage || '',
+        model: synth.baseModel || DEFAULT_MODEL_ID,
         systemPrompt: synth.systemPrompt || '',
         chatColor: synth.chatColor,
       }));
@@ -1576,7 +1570,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
               synthId: synthId,
               isCustom: isCustomSynth,
               metadata: {
-                model: synth.baseModel || 'gpt-4',
+                model: synth.baseModel || DEFAULT_MODEL_ID,
                 systemPrompt: synth.systemPrompt || '',
                 originalMemberId: synthId,
                 name: synth.name,
@@ -1630,25 +1624,20 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     }
   }, [teamMembers, activeThreadId]);
 
-  // Handle AI continuation (spacebar trigger) - WORKING VERSION
+  // Handle AI continuation (spacebar trigger)
   const handleAIContinue = React.useCallback(async () => {
-    // Use threadSynths (the actual synths in the current thread) instead of teamMembers
     if (threadSynths.length === 0) {
       return;
     }
 
-    // Use directService to handle AI continuation - this will trigger all team members to respond
     try {
       if (activeThreadId) {
-        await directService.sendMessage(activeThreadId, {
-          content: '[Continue the conversation - explore the topic further and share your thoughts among the team]',
-          sender: 'user'
-        });
+        await directService.continueConversation(activeThreadId);
       }
     } catch (error) {
-      console.error('❌ Failed to send AI continuation via directService:', error);
+      console.error('❌ Failed to continue AI conversation:', error);
     }
-  }, [threadSynths, threadTeamMembers, teamMembers, activeThreadId]);
+  }, [threadSynths, activeThreadId]);
 
   // Legacy randomizeTeamOrder removed - using directService instead
 
@@ -2078,6 +2067,10 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     }
   }, [messages]);
 
+  const showSidebarDetails = Boolean(
+    (selectedEmployee || selectedTeamMember || selectedPremadeTeam || selectedCustomTeam) && !isProfileCollapsed
+  );
+
   return (
     <div className="flex flex-col h-screen">
       <Header 
@@ -2088,7 +2081,66 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       
       <div className="flex flex-1 overflow-hidden">
         {!isBrowserCollapsed && (
-          <div className="w-[30%] flex-shrink-0">
+          <div className="w-[30%] flex-shrink-0 h-full min-h-0 flex flex-col">
+            {showSidebarDetails && (
+              <div className="flex-1 min-h-0 bg-white dark:bg-neutral-900 max-md:fixed max-md:inset-0 max-md:z-50">
+                {selectedPremadeTeam ? (
+                  <TeamProfile
+                    team={{
+                      id: selectedPremadeTeam.id,
+                      name: selectedPremadeTeam.team_data.name,
+                      selectedSynths: [], // COAITeam doesn't have selectedSynths, would need to fetch from team-synths
+                      createdAt: new Date(selectedPremadeTeam.created_at),
+                      description: selectedPremadeTeam.team_data.description,
+                      teamImage: selectedPremadeTeam.team_data.teamImage
+                    }}
+                    onBack={() => {
+                      setIsProfileCollapsed(true);
+                      setSelectedPremadeTeam(null);
+                    }}
+                    onAddTeam={handleQuickAddToThread}
+                    onSelectEmployee={handleSelectEmployee}
+                  />
+                ) : isEditTeamModalOpen && teamToEdit ? (
+                  <EditTeamModal
+                    isOpen={isEditTeamModalOpen}
+                    onClose={handleCloseEditTeamModal}
+                    onSave={handleSaveEditedTeam}
+                    availableSynths={customSynths}
+                    customSynths={customSynths}
+                    team={teamToEdit}
+                  />
+                ) : selectedCustomTeam ? (
+                  <CustomTeamProfile
+                    team={selectedCustomTeam}
+                    onBack={() => {
+                      setIsProfileCollapsed(true);
+                      setSelectedCustomTeam(null);
+                    }}
+                    onAddTeam={handleQuickAddToThread}
+                    onSelectEmployee={handleSelectEmployee}
+                    onEditTeam={handleEditCustomTeam}
+                    onDeleteTeam={handleDeleteCustomTeam}
+                  />
+                ) : (
+                  <ProfileSection
+                    synth={selectedEmployee}
+                    teamMember={selectedTeamMember}
+                    onAddToTeam={handleAddToThread}
+                    onUpdateProfile={handleUpdateProfile}
+                    onDeleteSynth={handleDeleteSynth}
+                    allSynths={customSynths}
+                    isCollapsed={isProfileCollapsed}
+                    onToggleCollapse={() => {
+                      setIsProfileCollapsed(true);
+                      setSelectedEmployee(null);
+                      setSelectedTeamMember(null);
+                    }}
+                  />
+                )}
+              </div>
+            )}
+            <div className={`min-h-0 ${showSidebarDetails ? 'hidden' : 'flex-1'}`}>
             <BrowserPanel
               customSynths={customSynths}
               publicSynths={publicSynths.map(synth => ({
@@ -2130,7 +2182,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
                       bio: actualSynthData.bio || 'Team member',
                       experience: actualSynthData.experience || ['Professional'],
                       systemPrompt: synthRef.metadata?.systemPrompt || actualSynthData.systemPrompt || '',
-                      baseModel: (synthRef.metadata?.model || actualSynthData.baseModel || 'gpt-4o') as AIEmployee['baseModel']
+                      baseModel: (synthRef.metadata?.model || actualSynthData.baseModel || DEFAULT_MODEL_ID) as AIEmployee['baseModel']
                     } as AIEmployee;
                   } else {
                     return {
@@ -2142,65 +2194,13 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
                       bio: 'Team member',
                       experience: ['Professional'],
                       systemPrompt: synthRef.metadata?.systemPrompt || '',
-                      baseModel: (synthRef.metadata?.model || 'gpt-4o') as AIEmployee['baseModel']
+                      baseModel: (synthRef.metadata?.model || DEFAULT_MODEL_ID) as AIEmployee['baseModel']
                     } as AIEmployee;
                   }
                 }) || []
               }))}
-              onToggleCollapse={() => {
-                setIsBrowserCollapsed(!isBrowserCollapsed);
-              }}
             />
-          </div>
-        )}
-        
-        {(selectedEmployee || selectedTeamMember || selectedPremadeTeam || selectedCustomTeam) && !isProfileCollapsed && (
-          <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto md:w-80 lg:w-96 md:flex-shrink-0 bg-white dark:bg-neutral-900">
-            {selectedPremadeTeam ? (
-              <TeamProfile
-                team={{
-                  id: selectedPremadeTeam.id,
-                  name: selectedPremadeTeam.team_data.name,
-                  selectedSynths: [], // COAITeam doesn't have selectedSynths, would need to fetch from team-synths
-                  createdAt: new Date(selectedPremadeTeam.created_at),
-                  description: selectedPremadeTeam.team_data.description,
-                  teamImage: selectedPremadeTeam.team_data.teamImage
-                }}
-                onBack={() => {
-                  setIsProfileCollapsed(true);
-                  setSelectedPremadeTeam(null);
-                }}
-                onAddTeam={handleQuickAddToThread}
-                onSelectEmployee={handleSelectEmployee}
-              />
-            ) : selectedCustomTeam ? (
-              <CustomTeamProfile
-                team={selectedCustomTeam}
-                onBack={() => {
-                  setIsProfileCollapsed(true);
-                  setSelectedCustomTeam(null);
-                }}
-                onAddTeam={handleQuickAddToThread}
-                onSelectEmployee={handleSelectEmployee}
-                onEditTeam={handleEditCustomTeam}
-                onDeleteTeam={handleDeleteCustomTeam}
-              />
-            ) : (
-              <ProfileSection
-                synth={selectedEmployee}
-                teamMember={selectedTeamMember}
-                onAddToTeam={handleAddToThread}
-                onUpdateProfile={handleUpdateProfile}
-                onDeleteSynth={handleDeleteSynth}
-                allSynths={customSynths}
-                isCollapsed={isProfileCollapsed}
-                onToggleCollapse={() => {
-                  setIsProfileCollapsed(true);
-                  setSelectedEmployee(null);
-                  setSelectedTeamMember(null);
-                }}
-              />
-            )}
+            </div>
           </div>
         )}
         
@@ -2229,16 +2229,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
           />
         </div>
       </div>
-      
-      {/* Edit Team Modal */}
-      <EditTeamModal
-        isOpen={isEditTeamModalOpen}
-        onClose={handleCloseEditTeamModal}
-        onSave={handleSaveEditedTeam}
-        availableSynths={customSynths}
-        customSynths={customSynths}
-        team={teamToEdit}
-      />
     </div>
   );
 };

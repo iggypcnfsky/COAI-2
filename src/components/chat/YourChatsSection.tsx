@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Pencil, Check, X, Plus, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { Team } from '@/types';
+import { PersonAvatar } from '@/components/ui/PersonAvatar';
 
 interface YourChatsSectionProps {
   threads: Team[]; // Team type represents threads in the new architecture
@@ -148,13 +149,17 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
                     <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-full">
                       <div className="flex -space-x-1">
                         {activeThread.members.slice(0, 2).map((member, index) => (
-                          <img
+                          <div
                             key={member.id}
-                            src={member.profileImage}
-                            alt={member.name}
-                            className="w-4 h-4 rounded-full object-cover border border-white dark:border-neutral-800"
+                            className="relative"
                             style={{ zIndex: activeThread.members.length - index }}
-                          />
+                          >
+                            <PersonAvatar
+                              name={member.name}
+                              src={member.profileImage}
+                              className="h-4 w-4 border border-white dark:border-neutral-800"
+                            />
+                          </div>
                         ))}
                         {activeThread.members.length > 2 && (
                           <div className="w-4 h-4 rounded-full bg-neutral-200 dark:bg-neutral-600 border border-white dark:border-neutral-800 flex items-center justify-center">
@@ -284,13 +289,17 @@ const ChatChip: React.FC<ChatChipProps> = ({
       {/* Synth Profile Pictures */}
       <div className="flex -space-x-1">
         {thread.members.slice(0, 3).map((member, index) => (
-          <img
+          <div
             key={member.id}
-            src={member.profileImage}
-            alt={member.name}
-            className="w-6 h-6 rounded-full object-cover border-2 border-white dark:border-neutral-800"
+            className="relative"
             style={{ zIndex: thread.members.length - index }}
-          />
+          >
+            <PersonAvatar
+              name={member.name}
+              src={member.profileImage}
+              className="h-6 w-6 border-2 border-white dark:border-neutral-800"
+            />
+          </div>
         ))}
         {thread.members.length > 3 && (
           <div className="w-6 h-6 rounded-full bg-neutral-200 dark:bg-neutral-600 border-2 border-white dark:border-neutral-800 flex items-center justify-center">

@@ -11,16 +11,7 @@ import { useMessages } from '@/hooks/store/useMessages';
 
 import { COAIMessage } from '@/types';
 import { useAppStore } from '@/stores/appStore';
-
-interface Document {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-
+import { isContinuePrompt } from '@/lib/chat/turnPlanner';
 
 // Normalize messages to ensure they follow the same structure - moved outside component to prevent recreation
 const normalizeMessage = (msg: ChatMessageType | COAIMessage): ChatMessageType => {
@@ -33,6 +24,7 @@ const normalizeMessage = (msg: ChatMessageType | COAIMessage): ChatMessageType =
       timestamp,
       aiEmployee: msg.message_data.aiEmployee,
       isLoading: msg.message_data.isLoading || false,
+      image: msg.message_data.image,
       ...msg.message_data.metadata
     } as ChatMessageType;
   }
@@ -88,7 +80,6 @@ const ChatSection: React.FC<ChatSectionProps> = ({
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isDragOver, setIsDragOver] = React.useState(false);
-  const [dragType, setDragType] = React.useState<'team' | 'employee' | 'document' | null>(null);
   const [incomingMessageCount, setIncomingMessageCount] = React.useState(0);
   const [lastMessageCount, setLastMessageCount] = React.useState(0);
 
@@ -98,7 +89,6 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     isLoading: isMessagesLoading,
     sendMessage: sendUserMessage,
     deleteMessage,
-    startMessageStream: streamAiMessage,
     loadInitialMessages: fetchMessages,
   } = useMessages(activeThreadId || undefined);
 
@@ -175,7 +165,8 @@ const ChatSection: React.FC<ChatSectionProps> = ({
       console.log('✅ [DEBUG] Using existing thread:', activeThreadId);
       await sendUserMessage({
         content: messageData.full,
-        sender: 'user'
+        sender: 'user',
+        ...(attachedImage ? { image: attachedImage } : {}),
       });
     } else {
       console.log('⚠️ [DEBUG] No active thread, creating one...');
@@ -213,7 +204,8 @@ const ChatSection: React.FC<ChatSectionProps> = ({
         console.log('🔍 [DEBUG] Sending message to new thread via directService');
         await directService.sendMessage(newThread.id, {
           content: messageData.full,
-          sender: 'user'
+          sender: 'user',
+          ...(attachedImage ? { image: attachedImage } : {}),
         });
       } catch (error) {
         console.error('❌ [DEBUG] Error with thread creation/message:', error);
@@ -240,20 +232,18 @@ const ChatSection: React.FC<ChatSectionProps> = ({
   }, [activeThreadId, deleteMessage, propsRemoveMessage]);
 
   const handleAIContinue = useCallback(() => {
-    if (activeThreadId && teamMembers.length > 0) {
-      const lastAI = teamMembers[0];
-      
-      streamAiMessage('', {
-        id: lastAI.id,
-        name: lastAI.name,
-        role: lastAI.role,
-        profileImage: lastAI.profileImage,
-        model: lastAI.model || 'gpt-4'
-      });
-    } else if (propsAIContinue) {
+    if (propsAIContinue) {
       propsAIContinue();
+      return;
     }
-  }, [activeThreadId, teamMembers, streamAiMessage, propsAIContinue]);
+    if (activeThreadId) {
+      import('../../lib/services/directService').then(({ directService }) => {
+        directService.continueConversation(activeThreadId).catch((error) => {
+          console.error('Failed to continue conversation:', error);
+        });
+      });
+    }
+  }, [activeThreadId, propsAIContinue]);
 
   useEffect(() => {
     const aiMessages = activeThreadMessages.filter(msg => {
@@ -290,22 +280,6 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     setIsDragOver(true);
-    
-    try {
-      const dragData = e.dataTransfer.getData('application/json');
-      if (dragData) {
-        const parsedData = JSON.parse(dragData);
-        if (parsedData.type === 'document') {
-          setDragType('document');
-        } else if (parsedData.type === 'team' || parsedData.type === 'custom-team') {
-          setDragType('team');
-        } else {
-          setDragType('employee');
-        }
-      }
-    } catch (error) {
-      setDragType('employee');
-    }
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
@@ -315,13 +289,11 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     
     if (!currentTarget.contains(relatedTarget)) {
       setIsDragOver(false);
-      setDragType(null);
     }
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     setIsDragOver(false);
-    setDragType(null);
     
     console.log('🚨 [CHAT SECTION DROP DEBUG] === CHAT SECTION DROP EVENT ===');
     console.log('🚨 [CHAT SECTION DROP DEBUG] Drop event in ChatSection:', e);
@@ -332,28 +304,11 @@ const ChatSection: React.FC<ChatSectionProps> = ({
       console.log('🚨 [CHAT SECTION DROP DEBUG] Drag data:', dragData);
       const parsedData = JSON.parse(dragData);
       console.log('🚨 [CHAT SECTION DROP DEBUG] Parsed data:', parsedData);
-      
-      if (parsedData.type === 'document' && parsedData.document) {
-        console.log('🚨 [CHAT SECTION DROP DEBUG] Document detected, handling directly');
-        e.preventDefault(); // Prevent default to avoid any unwanted behavior
-        
-        // Handle document drop by directly calling the message input's document handler
-        const doc = parsedData.document;
-        
-        // Find the MessageInputWithMentions component and trigger its document handling
-        const messageInputContainer = document.querySelector('[data-message-input-container]');
-        if (messageInputContainer) {
-          // Create a custom event with the document data
-          const customEvent = new CustomEvent('documentDrop', {
-            detail: { document: doc }
-          });
-          messageInputContainer.dispatchEvent(customEvent);
-        } else {
-          console.error('🚨 [CHAT SECTION DROP DEBUG] Could not find message input container');
-        }
+
+      if (parsedData.type === 'document') {
         return;
       }
-      
+
       // Only prevent default for non-document drops
       e.preventDefault();
       
@@ -376,18 +331,12 @@ const ChatSection: React.FC<ChatSectionProps> = ({
 
   // Memoize the filtered and normalized messages to prevent recreation on each render
   const displayMessages = useMemo(() => {
-    const filtered = activeThreadMessages
+    return activeThreadMessages
       .filter(msg => !msg.id.startsWith('demo'))
-      .map(normalizeMessage);
-      
-    return filtered;
+      .map(normalizeMessage)
+      .filter(msg => !isContinuePrompt(msg.content || ''))
+      .filter(msg => !(msg.isLoading && !msg.content?.trim()));
   }, [activeThreadMessages]);
-
-  // Function to set document mention handler (no longer needed, but keeping for compatibility)
-  const handleSetDocumentMentionHandler = useCallback((handler: ((doc: Document) => void) | null) => {
-    console.log('🚨 [CHAT SECTION DEBUG] handleSetDocumentMentionHandler called with handler:', !!handler);
-    // No longer needed since we handle document drops directly
-  }, []);
 
   return (
     <div 
@@ -430,27 +379,13 @@ const ChatSection: React.FC<ChatSectionProps> = ({
             <div className="absolute inset-0 pointer-events-none z-50 flex items-center justify-center">
               <div className="bg-white dark:bg-neutral-800 border-4 border-blue-500 dark:border-blue-400 border-dashed rounded-xl p-8 shadow-2xl transform scale-110 animate-pulse">
                 <div className="text-center">
-                  {dragType === 'document' ? (
-                    <>
-                      <div className="text-6xl mb-4 animate-bounce">📄</div>
-                      <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-2">
-                        Drop to mention in chat!
-                      </h3>
-                      <p className="text-lg text-blue-600 dark:text-blue-400 font-medium">
-                        Release to add as file mention
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-6xl mb-4 animate-bounce">👥</div>
-                      <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-2">
-                        Drop to add to team!
-                      </h3>
-                      <p className="text-lg text-blue-600 dark:text-blue-400 font-medium">
-                        Release to add to your current team
-                      </p>
-                    </>
-                  )}
+                  <div className="text-6xl mb-4 animate-bounce">👥</div>
+                  <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-2">
+                    Drop to add to team!
+                  </h3>
+                  <p className="text-lg text-blue-600 dark:text-blue-400 font-medium">
+                    Release to add to your current team
+                  </p>
                 </div>
               </div>
             </div>
@@ -483,7 +418,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
                       Start the conversation with your AI team members. Type a message below to begin.
                     </p>
                     <div className="text-sm text-neutral-400 dark:text-neutral-500">
-                      <p>💡 All team members will respond, or use @Name to mention specific ones</p>
+                      <p>💡 A couple of teammates will jump in, or use @Name to call someone specifically</p>
                     </div>
                   </>
                 )}
@@ -530,7 +465,6 @@ const ChatSection: React.FC<ChatSectionProps> = ({
           isWaitingForStream={isWaitingForStream}
           incomingMessageCount={incomingMessageCount}
           globalSpacebarCount={globalSpacebarCount}
-          onSetDocumentMentionHandler={handleSetDocumentMentionHandler}
         />
       </div>
     </div>

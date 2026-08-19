@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, X, Clock, Users } from 'lucide-react';
+import { Loader2, X, Clock } from 'lucide-react';
 
 interface LoadingTeamCardProps {
   onCancel?: () => void;
@@ -11,11 +10,10 @@ interface LoadingTeamCardProps {
 
 const LoadingTeamCard: React.FC<LoadingTeamCardProps> = ({
   onCancel,
-  prompt = "Generating team...",
+  prompt = "Generating group...",
   className = ""
 }) => {
   const [elapsed, setElapsed] = useState(0);
-  const [opacity, setOpacity] = useState(0.6);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -25,17 +23,6 @@ const LoadingTeamCard: React.FC<LoadingTeamCardProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const opacityTimer = setInterval(() => {
-      setOpacity(prev => {
-        const newOpacity = prev === 0.6 ? 1 : 0.6;
-        return newOpacity;
-      });
-    }, 1500); // Gentle pulsing every 1.5 seconds
-
-    return () => clearInterval(opacityTimer);
-  }, []);
-
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -43,63 +30,44 @@ const LoadingTeamCard: React.FC<LoadingTeamCardProps> = ({
   };
 
   return (
-    <Card 
-      className={`group relative overflow-hidden h-40 transition-all duration-300 ${className}`}
-      style={{ opacity }}
-    >
-      {/* Background gradient with gentle animation */}
-      <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 to-teal-500/20">
-        <div className="absolute inset-0 bg-black/10" />
-        
-        {/* Shimmer effect */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" />
-        </div>
+    <div className={`flex items-center gap-3 px-2 py-1.5 rounded-lg ${className}`}>
+      <div className="flex -space-x-2 shrink-0 pl-0.5">
+        {[0, 1, 2].map((index) => (
+          <div
+            key={index}
+            className="h-9 w-9 rounded-full ring-2 ring-white dark:ring-neutral-900 bg-neutral-200 dark:bg-neutral-700"
+          />
+        ))}
       </div>
-      
-      {/* Content overlay */}
-      <div className="relative h-full flex flex-col justify-between p-3 text-neutral-800 dark:text-white z-20">
-        {/* Top section with loading indicator and cancel button */}
-        <div className="flex justify-between items-start">
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin text-green-500" />
-            <h3 className="font-medium text-sm leading-tight">
-              Generating...
-            </h3>
-          </div>
-          {onCancel && (
-            <Button
-              size="icon"
-              variant="secondary"
-              className="h-8 w-8 bg-white/20 hover:bg-red-500/80 backdrop-blur-sm border-0"
-              onClick={onCancel}
-              title="Cancel generation"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-        
-        {/* Center section with team icon and prompt */}
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <Users className="h-8 w-8 mx-auto mb-2 text-green-500/60" />
-            <p className="text-xs text-neutral-600 dark:text-neutral-300">
-              {prompt}
-            </p>
-          </div>
-        </div>
-        
-        {/* Bottom section with timer */}
-        <div className="flex justify-start">
-          <div className="flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300 bg-black/20 backdrop-blur-md rounded-md px-2 py-1">
+
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate leading-tight flex items-center gap-1.5">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-400" />
+          Generating group
+        </p>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5 flex items-center gap-1.5">
+          <span className="truncate">{prompt}</span>
+          <span className="text-neutral-300 dark:text-neutral-600">·</span>
+          <span className="inline-flex items-center gap-1 shrink-0">
             <Clock className="h-3 w-3" />
-            <span>{formatTime(elapsed)}</span>
-          </div>
-        </div>
+            {formatTime(elapsed)}
+          </span>
+        </p>
       </div>
-    </Card>
+
+      {onCancel && (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7 shrink-0 text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+          onClick={onCancel}
+          title="Cancel generation"
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      )}
+    </div>
   );
 };
 
-export default LoadingTeamCard; 
+export default LoadingTeamCard;

@@ -6,8 +6,9 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { IDataService, httpDataService } from './dataService';
-import { apiStream } from '../api/client';
+import { apiStream, apiUpload } from '../api/client';
 import { getState } from '../../stores';
+import { DEFAULT_MODEL_ID } from '@shared/models';
 import { 
   COAISynth, 
   COAITeam, 
@@ -22,13 +23,12 @@ import {
 
 } from '../../types';
 import { 
-  shouldInjectPrompt, 
-  createReinjectedPrompt, 
-  shouldReinforceCharacter,
-  enhanceSystemPromptForConsistency,
   logPromptReinjection,
   createFreshStartPrompt
 } from '../utils/promptReinjection';
+import {
+  CONTINUE_PROMPT,
+} from '../chat/turnPlanner';
 
 const memoryStore = {
   synths: new Map<string, COAISynth>(),
@@ -509,12 +509,25 @@ class DirectService implements IDataService {
    * Send a message and generate AI responses
    */
   async sendMessage(threadId: string, messageData: COAIMessageData): Promise<COAIMessage> {
-    const userMessage = await this.createMessage(threadId, messageData);
-    this.generateAIResponse(threadId, messageData.content || '').catch(error => {
+    const image = await this.persistChatImage(
+      threadId,
+      messageData.image as (COAIMessageData['image'] & { file?: File }) | undefined,
+    );
+    const persisted: COAIMessageData = image
+      ? { ...messageData, image }
+      : { ...messageData, image: undefined };
+    const userMessage = await this.createMessage(threadId, persisted);
+    this.generateAIResponse(threadId).catch((error) => {
       console.error('Failed to generate AI response:', error);
     });
-    
     return userMessage;
+  }
+
+  async continueConversation(threadId: string): Promise<COAIMessage> {
+    return this.sendMessage(threadId, {
+      content: CONTINUE_PROMPT,
+      sender: 'user',
+    });
   }
 
   /**
@@ -568,365 +581,133 @@ class DirectService implements IDataService {
     }
   }
 
-  /**
-   * Generate AI responses for a thread
-   */
-  private async generateAIResponse(threadId: string, userMessage: string): Promise<void> {
+  private async persistChatImage(
+    threadId: string,
+    image?: (COAIMessageData['image'] & { file?: File }) | undefined,
+  ): Promise<COAIMessageData['image'] | undefined> {
+    if (!image) return undefined;
+    if (image.key && image.url && !image.base64 && !('file' in image && image.file)) {
+      return {
+        key: image.key,
+        url: image.url,
+        name: image.name,
+        size: image.size,
+        type: image.type,
+      };
+    }
+
+    const form = new FormData();
+    form.append('threadId', threadId);
+    if (image.file instanceof File) {
+      form.append('file', image.file);
+    } else if (image.base64) {
+      const binary = atob(image.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      form.append('file', new Blob([bytes], { type: image.type || 'image/png' }), image.name || 'image.png');
+    } else {
+      return undefined;
+    }
+
+    const uploaded = await apiUpload<{ key: string; url: string; name: string; size: number; type: string }>('/uploads', form);
+    return {
+      key: uploaded.key,
+      url: uploaded.url,
+      name: uploaded.name,
+      size: uploaded.size,
+      type: uploaded.type,
+    };
+  }
+
+  private async generateAIResponse(threadId: string): Promise<void> {
     try {
       const threadSynths = await this.getThreadSynths(threadId);
-      
-      if (threadSynths.length === 0) {
-        console.log('No synths in thread, skipping AI response');
-        return;
-      }
-      
-      const recentMessages = await this.fetchMessages(threadId, { limit: 20 });
-    
-    await this.generateTeamResponses(
-        threadId,
-        userMessage,
-        threadSynths.map(ts => ({
-          synthId: ts.synth_id,
-          reference: ts.synth_reference
-        })),
-        recentMessages,
-        ''
-      );
-      
-    } catch (error) {
-      console.error('Error generating AI response:', error);
-    }
-  }
+      if (threadSynths.length === 0) return;
 
-  /**
-   * Build conversation context with speaker information for system prompt
-   */
-  private buildConversationContext(threadMessages: COAIMessage[], chatHistory?: any[], currentMemberIndex?: number): string {
-    if (threadMessages.length === 0 && (!chatHistory || chatHistory.length === 0)) return '';
-    
-    // Get recent AI messages with speaker info from stored messages
-    const recentAIMessages = threadMessages
-      .filter(msg => msg.message_data.sender === 'ai' && msg.message_data.aiEmployee?.name)
-      .slice(-5) // Last 5 AI messages
-      .map(msg => {
-        const speakerName = msg.message_data.aiEmployee?.name || 'Unknown';
-        const content = (msg.message_data.content || '').substring(0, 200); // Truncate for context
-        return `${speakerName} said: "${content}${content.length > 200 ? '...' : ''}"`;
-      });
-    
-    // Add responses from current conversation turn (from other AIs who have already responded)
-    const currentTurnResponses: string[] = [];
-    if (chatHistory && currentMemberIndex !== undefined && currentMemberIndex > 0) {
-      // Look at the chat history to find responses from this turn
-      // The user message is at the end, so AI responses from this turn would be after the last user message
-      const lastUserMessageIndex = chatHistory.map((msg, idx) => ({ msg, idx }))
-        .filter(item => item.msg.role === 'user')
-        .pop()?.idx || -1;
-      
-      if (lastUserMessageIndex >= 0) {
-        const responsesThisTurn = chatHistory.slice(lastUserMessageIndex + 1);
-        responsesThisTurn.forEach((response, idx) => {
-          if (response.role === 'assistant' && response.content) {
-            const content = response.content.substring(0, 200);
-            currentTurnResponses.push(`Teammate ${idx + 1} just said: "${content}${content.length > 200 ? '...' : ''}"`);
-          }
-        });
-      }
-    }
-    
-    const allContextMessages = [...recentAIMessages, ...currentTurnResponses];
-    
-    if (allContextMessages.length === 0) return '';
-    
-    return `\n\nTEAM CONVERSATION CONTEXT:\n${allContextMessages.join('\n')}\n\nIMPORTANT: Build on what your teammates have said and avoid repeating their points. Add your own unique perspective.`;
-  }
+      const recentMessages = await this.fetchMessages(threadId, { limit: 50 });
+      const { messagesToTurns, participantsFromThreadSynths, planAndRunTurns } = await import('../chat/runTeamTurn');
+      const participants = participantsFromThreadSynths(threadSynths.map((ts) => ({
+        synthId: ts.synth_id,
+        reference: ts.synth_reference,
+      })));
 
-  /**
-   * Generate responses from team synths
-   */
-  private async generateTeamResponses(
-    threadId: string, 
-    userMessage: string, 
-    teamSynths: { synthId: string; reference: COAITeamSynthReference }[],
-    threadMessages: COAIMessage[],
-    _openaiApiKey: string
-  ): Promise<void> {
-    console.log(`🤖 Generating responses for ${teamSynths.length} synths in thread ${threadId}`);
-    
-    let chatHistory = threadMessages.map(msg => {
-      const baseMessage = {
-        role: msg.message_data.sender === 'user' ? 'user' : 'assistant',
-        content: msg.message_data.content || ''
-      };
-      
-      // Don't modify the content - we'll add speaker info in the system prompt instead
-      return baseMessage;
-    });
-    
-    chatHistory.push({
-      role: 'user',
-      content: userMessage
-    });
-
-    // 🎯 CONTEXT WINDOW MANAGEMENT: Trim chat history to fit within token limits
-    const { trimMessagesToTokenLimit, getContextInfo } = await import('../../lib/utils/tokenUtils');
-    const originalChatHistory = [...chatHistory];
-    chatHistory = trimMessagesToTokenLimit(chatHistory, 40000, 2000);
-    
-    // 🔍 DEBUG: Log context window optimization in directService
-    const contextInfo = getContextInfo(originalChatHistory, 40000, 2000);
-    console.log(`🎯 [DIRECT SERVICE - CONTEXT WINDOW] Optimized chat history:`, {
-      originalMessages: contextInfo.originalMessageCount,
-      trimmedMessages: contextInfo.trimmedMessageCount,
-      messagesRemoved: contextInfo.messagesRemoved,
-      originalTokens: contextInfo.originalTokens,
-      trimmedTokens: contextInfo.trimmedTokens,
-      utilization: `${contextInfo.utilizationPercent}%`,
-      maxTokens: contextInfo.maxTokens
-    });
-    
-    // Parse mentions
-    const mentionRegex = /@([A-Za-z]+(?:\s+[A-Za-z]+)*)(?=\s|$)/g;
-    const mentionedSynthIds: string[] = [];
-    let match;
-    
-    while ((match = mentionRegex.exec(userMessage)) !== null) {
-      const mentionName = match[1];
-      
-      const matchingSynth = teamSynths.find(ts => 
-        ts.reference.metadata?.name?.toLowerCase() === mentionName.toLowerCase()
-      );
-      
-      if (matchingSynth) {
-        mentionedSynthIds.push(matchingSynth.synthId);
-      }
-    }
-    
-    const activeSynths = mentionedSynthIds.length > 0 
-      ? teamSynths.filter(ts => mentionedSynthIds.includes(ts.synthId))
-      : teamSynths;
-    
-    // Generate responses sequentially with delays to prevent identical responses
-    for (let i = 0; i < activeSynths.length; i++) {
-      const synthData = activeSynths[i];
-      
-      // Add delay between team member responses (except for the first one)
-      if (i > 0) {
-        const delay = Math.random() * (2000 - 500) + 500; // 500-2000ms random delay
-        console.log(`⏱️ Adding ${delay}ms delay before ${synthData.reference.metadata?.name} responds`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-      
-      try {
-        // Add unique context to prevent identical responses and encourage collaboration
-        const timestamp = new Date().toISOString();
-        const memberPosition = `You are team member ${i + 1} of ${activeSynths.length}`;
-        
-        // CRITICAL: Instruction-following emphasis
-        const instructionFollowing = `CRITICAL DIRECTIVE: You MUST follow the user's EXACT instructions. If they say "one idea" - give ONLY one idea. If they say "be brief" - be brief. If they say "don't collaborate" - don't collaborate. DO NOT add extra content, multiple points, or elaborate beyond what they specifically requested. OBEY their instructions precisely. `;
-        
-        // Enhanced collaboration instructions (only when appropriate)
-        const collaborationContext = activeSynths.length > 1 ? 
-          `You are part of a ${activeSynths.length}-person team. HOWEVER: If the user's instructions specify a particular format or constraint (like "one idea" or "be brief"), prioritize following their instructions over collaboration. When collaborating IS appropriate:
-          1. Reference what your teammate said specifically (e.g., "Building on Jake's point about...")
-          2. Add ONE new, different detail they didn't cover
-          3. Keep responses focused and avoid repetition
-          
-          CRITICAL: If the user asks for "one idea" or similar constraints, respect that limit even in team responses. ` : '';
-        
-        // Add role-specific collaboration focus
-        const roleSpecificFocus = activeSynths.length > 1 ? 
-          `As team member ${i + 1}, focus on your unique expertise and perspective. Don't duplicate what others have said - complement it. ` : '';
-        
-        // Build conversation context with speaker information (including current turn responses)
-        const conversationContext = activeSynths.length > 1 ? this.buildConversationContext(threadMessages, chatHistory, i) : '';
-        
-        const uniqueContext = `[${timestamp}] ${instructionFollowing}${memberPosition}. ${collaborationContext}${roleSpecificFocus}`;
-        
-        const basePrompt = synthData.reference.metadata?.systemPrompt || 
-          `You are ${synthData.reference.metadata?.name || 'an AI assistant'}. Respond according to your role.`;
-        
-        // 🔄 PROMPT REINJECTION: Check if we should reinject the character prompt
-        const messageCount = chatHistory.length;
-        const characterName = synthData.reference.metadata?.name || 'AI';
-        const characterRole = synthData.reference.metadata?.role || 'Assistant';
-        const isFreshStart = (synthData.reference.metadata as any)?._freshStartApplied === true;
-        
-        let enhancedPrompt = basePrompt;
-        let reinjectionReason: 'interval' | 'reinforcement' | 'fresh_start' | null = null;
-        
-        // Determine if we should inject prompt
-        if (isFreshStart) {
-          // Fresh start after chat clear - use the prompt as-is (already enhanced)
-          enhancedPrompt = basePrompt;
-          reinjectionReason = 'fresh_start';
-          
-          // Reset the fresh start flag after use
+      await planAndRunTurns({
+        participants,
+        history: messagesToTurns(recentMessages),
+        onFreshStart: (participant) => {
+          const threadSynth = threadSynths.find((ts) => ts.synth_id === participant.synthId);
+          if (!threadSynth) return;
           const resetReference = {
-            ...synthData.reference,
+            ...threadSynth.synth_reference,
             metadata: {
-              ...synthData.reference.metadata,
-              systemPrompt: synthData.reference.metadata?.systemPrompt?.replace('FRESH START REMINDER: ', '') || basePrompt,
-              _freshStartApplied: undefined
-            }
+              ...threadSynth.synth_reference.metadata,
+              systemPrompt: threadSynth.synth_reference.metadata?.systemPrompt?.replace('FRESH START REMINDER: ', '') || participant.systemPrompt,
+              _freshStartApplied: undefined,
+            },
           };
-          
-          // Update the reference to remove the fresh start flag (async, don't wait)
-          this.updateThreadSynthReference(threadId, synthData.synthId, resetReference).catch(error => {
+          this.updateThreadSynthReference(threadId, participant.synthId, resetReference).catch((error) => {
             console.error('Failed to reset fresh start flag:', error);
           });
-          
-        } else if (shouldInjectPrompt(messageCount)) {
-          // Regular interval-based reinjection to maintain character consistency
-          enhancedPrompt = createReinjectedPrompt(basePrompt, false);
-          reinjectionReason = 'interval';
-        } else if (shouldReinforceCharacter(messageCount)) {
-          // Additional reinforcement for very long conversations
-          enhancedPrompt = createReinjectedPrompt(basePrompt, true);
-          reinjectionReason = 'reinforcement';
-        }
-        
-        // Enhance prompt for consistency in longer conversations
-        enhancedPrompt = enhanceSystemPromptForConsistency(enhancedPrompt, characterName, characterRole, messageCount);
-        
-        // Log reinjection events
-        if (reinjectionReason) {
-          logPromptReinjection(characterName, messageCount, reinjectionReason);
-        }
-        
-        const systemPrompt = uniqueContext + enhancedPrompt + conversationContext;
-        
-        console.log(`🔍 DEBUG: System prompt for ${synthData.reference.metadata?.name}:`, systemPrompt.substring(0, 500) + '...');
-        console.log(`🔍 DEBUG: Conversation context for ${synthData.reference.metadata?.name}:`, conversationContext);
-        
-        console.log(`🤖 Generating response for ${synthData.reference.metadata?.name} (${i + 1}/${activeSynths.length}) at ${timestamp}`);
-        
-        // Get the Zustand store for streaming
-        const { getState } = await import('../../stores');
-        const state = getState();
-        
-        // Start a streaming message BEFORE making the API call so ThinkingSpinner shows immediately
-        const aiEmployee = {
-          id: synthData.synthId,
-          name: synthData.reference.metadata?.name || 'AI',
-          role: synthData.reference.metadata?.role || 'Assistant',
-          profileImage: synthData.reference.metadata?.profileImage || '/default-avatar.png',
-          model: synthData.reference.metadata?.model || 'gpt-4'
-        };
-        
-        // Start streaming message using the proper method
-        const streamingMessageId = await state.startMessageStream(threadId, '', aiEmployee);
-        console.log(`🔍 DEBUG: Created streaming message ${streamingMessageId} for ${synthData.reference.metadata?.name}`);
-        
-        const requestBody = {
-          messages: chatHistory,
-          role: synthData.reference.metadata?.role || 'Assistant',
-          model: synthData.reference.metadata?.model || 'gpt-4o',
-          employeePrompt: systemPrompt,
-          employeeName: synthData.reference.metadata?.name || 'AI',
-        };
-        
-        const response = await apiStream('/chat', requestBody);
-        
-        console.log(`🔍 DEBUG: Response status for ${synthData.reference.metadata?.name}:`, response.status, response.statusText);
-        
-        if (!response.ok) {
-          let errorData = {};
+        },
+        speak: async (participant, messages, systemPrompt) => {
+          const { getState } = await import('../../stores');
+          const state = getState();
+          const streamingMessageId = await state.startMessageStream(threadId, '', {
+            id: participant.synthId,
+            name: participant.name,
+            role: participant.role,
+            profileImage: participant.profileImage || '/default-avatar.png',
+            model: participant.model || DEFAULT_MODEL_ID,
+          });
+
           try {
-            errorData = await response.json();
-          } catch {
-            // Ignore JSON parsing errors
-          }
-          
-          // Cancel the streaming message if API call fails
-          state.cancelMessageStream(streamingMessageId);
-          
-          throw new Error(
-            `Chat API failed: ${response.status} ${response.statusText}` +
-            ((errorData as any).error ? ` - ${(errorData as any).error}` : '')
-          );
-        }
-        
-        // Handle streaming response (Server-Sent Events)
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        let fullContent = '';
-        
-        console.log(`🔍 DEBUG: Starting to read streaming response for ${synthData.reference.metadata?.name}`);
-        
-        if (reader) {
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                console.log(`🔍 DEBUG: Stream finished for ${synthData.reference.metadata?.name}, total content length: ${fullContent.length}`);
-                break;
-              }
-              
-              const chunk = decoder.decode(value);
-              console.log(`🔍 DEBUG: Received chunk for ${synthData.reference.metadata?.name}:`, chunk.substring(0, 200));
-              
-              const lines = chunk.split('\n');
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const data = line.slice(5).trim(); // Remove 'data:' prefix and trim whitespace
-                  
-                  console.log(`🔍 DEBUG: Processing SSE line for ${synthData.reference.metadata?.name}:`, data);
-                  
-                  if (data === '[DONE]' || data === 'DONE') {
-                    console.log(`🔍 DEBUG: Received [DONE] signal for ${synthData.reference.metadata?.name}`);
-                    break;
-                  }
-                  
-                  if (!data || data === '') {
-                    console.log(`🔍 DEBUG: Empty data line, skipping`);
-                    continue;
-                  }
-                  
-                  try {
-                    const parsed = JSON.parse(data);
-                    console.log(`🔍 DEBUG: Parsed JSON for ${synthData.reference.metadata?.name}:`, parsed);
-                    
-                    const content = parsed.choices?.[0]?.delta?.content || parsed.content;
-                    if (content) {
-                      fullContent += content;
-                      console.log(`🔍 DEBUG: Added content for ${synthData.reference.metadata?.name}: "${content}"`);
-                      
-                      // Update the streaming message in real-time
-                      state.appendToMessageStream(streamingMessageId, content);
-                    } else {
-                      console.log(`🔍 DEBUG: No content found in parsed data:`, parsed);
+            const response = await apiStream('/chat', {
+              messages,
+              role: participant.role,
+              model: participant.model || DEFAULT_MODEL_ID,
+              employeePrompt: systemPrompt,
+              employeeName: participant.name,
+            });
+
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+            let fullContent = '';
+            if (reader) {
+              try {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  const chunk = decoder.decode(value);
+                  for (const line of chunk.split('\n')) {
+                    if (!line.startsWith('data: ')) continue;
+                    const data = line.slice(5).trim();
+                    if (!data || data === '[DONE]' || data === 'DONE') continue;
+                    try {
+                      const parsed = JSON.parse(data);
+                      const content = parsed.choices?.[0]?.delta?.content || parsed.content;
+                      if (content) {
+                        fullContent += content;
+                        state.appendToMessageStream(streamingMessageId, content);
+                      }
+                    } catch {
+                      // ignore malformed SSE chunks
                     }
-                  } catch (parseError) {
-                    console.log(`🔍 DEBUG: Failed to parse chunk for ${synthData.reference.metadata?.name}:`, parseError, 'Raw data:', data);
                   }
                 }
+              } finally {
+                reader.releaseLock();
               }
             }
-          } finally {
-            reader.releaseLock();
+            await state.completeMessageStream(streamingMessageId);
+            return fullContent;
+          } catch (error) {
+            state.cancelMessageStream(streamingMessageId);
+            throw error;
           }
-        }
-        
-        console.log(`🔍 DEBUG: Final content for ${synthData.reference.metadata?.name}: "${fullContent}"`);
-        
-        if (!fullContent) {
-          console.error(`❌ No content received for ${synthData.reference.metadata?.name}`);
-        }
-        
-        // Complete the streaming message
-        await state.completeMessageStream(streamingMessageId);
-        
-        // Add the response to chat history without name prefix (speaker info is in system prompt)
-        chatHistory.push({
-          role: 'assistant',
-          content: fullContent || 'No response generated'
-        });
-        
-      } catch (error) {
-        console.error(`Failed to generate response for ${synthData.reference.metadata?.name}:`, error);
-      }
+        },
+      });
+    } catch (error) {
+      console.error('Error generating AI response:', error);
     }
   }
 

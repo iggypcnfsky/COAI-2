@@ -39,6 +39,25 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
   return response.json() as Promise<T>;
 }
 
+export async function apiUpload<T = unknown>(path: string, formData: FormData): Promise<T> {
+  const h = new Headers();
+  const token = tokenGetter ? await tokenGetter() : null;
+  if (token) h.set('Authorization', `Bearer ${token}`);
+
+  const response = await fetch(`${API_BASE}/api/v1${path}`, {
+    method: 'POST',
+    headers: h,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: string; code?: string };
+    throw new ApiError(body.error || response.statusText, response.status, body.code);
+  }
+
+  return response.json() as Promise<T>;
+}
+
 export async function apiStream(path: string, body: unknown): Promise<Response> {
   const response = await fetch(`${API_BASE}/api/v1${path}`, {
     method: 'POST',

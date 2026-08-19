@@ -1,10 +1,51 @@
 import { StateCreator } from 'zustand';
 import { RootState } from '../../types/store';
-import { Thread, COAITeamSynth, COAITeamSynthReference } from '../../types';
+import { COAISynth, Thread, COAITeamSynth, COAITeamSynthReference } from '../../types';
 import { normalizeArray, removeEntity, addRelationship, removeRelationship, removeAllRelationships } from '../../lib/utils/normalization';
 import { httpDataService } from '../../lib/services/dataService';
 import { LoadingStateKey } from '../../types/store';
 import { directService } from '../../lib/services/directService';
+import { DEFAULT_MODEL_ID } from '@shared/models';
+
+const threadSynthFetchGen = new Map<string, number>();
+
+function bumpThreadSynthFetch(threadId: string) {
+  const next = (threadSynthFetchGen.get(threadId) || 0) + 1;
+  threadSynthFetchGen.set(threadId, next);
+  return next;
+}
+
+function threadSynthId(threadSynth: any): string | null {
+  return threadSynth?.synth_id || threadSynth?.synth_reference?.synthId || null;
+}
+
+function synthFromReference(
+  synthId: string,
+  reference: COAITeamSynthReference | undefined,
+  userId: string,
+  existing?: COAISynth
+): COAISynth {
+  const meta = reference?.metadata || {};
+  const existingData = existing?.synth_data;
+  return {
+    id: synthId,
+    user_id: existing?.user_id || userId,
+    synth_data: {
+      name: existingData?.name || meta.name || 'Unknown',
+      role: existingData?.role || meta.role || 'Unknown',
+      age: existingData?.age || 30,
+      profileImage: existingData?.profileImage || meta.profileImage || '',
+      bio: existingData?.bio,
+      experience: existingData?.experience,
+      systemPrompt: existingData?.systemPrompt || meta.systemPrompt || '',
+      baseModel: existingData?.baseModel || meta.model || DEFAULT_MODEL_ID,
+      chatColor: existingData?.chatColor || meta.chatColor,
+      metadata: existingData?.metadata || {},
+    },
+    created_at: existing?.created_at || new Date().toISOString(),
+    updated_at: existing?.updated_at || new Date().toISOString(),
+  };
+}
 
 export interface ThreadsState {
   // Actions
@@ -367,17 +408,34 @@ export const createThreadsSlice: StateCreator<
 
   // Thread-Synth relationship actions
   getThreadSynths: async (threadId: string) => {
+    const fetchGen = bumpThreadSynthFetch(threadId);
     try {
       // Use the directService to fetch thread synths
       const threadSynths = await directService.getThreadSynths(threadId);
+      if (threadSynthFetchGen.get(threadId) !== fetchGen) {
+        return threadSynths;
+      }
       
-      // Create a list of synth IDs for this thread - extract from synth_reference.synthId
-      const synthIds = threadSynths.map((ts: any) => {
-        return ts.synth_reference?.synthId;
-      }).filter(Boolean) as string[];
+      const synthIds = threadSynths.map(threadSynthId).filter(Boolean) as string[];
+      const userId = get().user?.id || '';
+      const existingSynths = get().entities.synths || {};
+      const missingIds = synthIds.filter((id) => !existingSynths[id]);
+
+      const hydratedFromReference = threadSynths.reduce<Record<string, COAISynth>>((acc, threadSynth: any) => {
+        const synthId = threadSynthId(threadSynth);
+        if (!synthId || existingSynths[synthId]) return acc;
+        acc[synthId] = synthFromReference(synthId, threadSynth.synth_reference, userId);
+        return acc;
+      }, {});
       
-      // Update the relationship in the store
       set((state) => ({
+        entities: {
+          ...state.entities,
+          synths: {
+            ...state.entities.synths,
+            ...hydratedFromReference
+          }
+        },
         relationships: {
           ...state.relationships,
           threadSynths: {
@@ -386,43 +444,25 @@ export const createThreadsSlice: StateCreator<
           }
         }
       }), false, 'threads/getThreadSynths/success');
-      
-      // Store the actual synth entities in the store
-      for (const threadSynth of threadSynths) {
-        if (threadSynth.synth && threadSynth.synth_reference?.synthId) {
-          const synthId = threadSynth.synth_reference.synthId;
-          
-          // Convert the synth data to COAISynth format for the store
-          const synthEntity = {
-            id: synthId,
-            user_id: get().user?.id || '',
-            synth_data: {
-              name: threadSynth.synth.name,
-              role: threadSynth.synth.role,
-              age: threadSynth.synth.age,
-              profileImage: threadSynth.synth.profileImage,
-              bio: threadSynth.synth.bio,
-              experience: threadSynth.synth.experience,
-              systemPrompt: threadSynth.synth.systemPrompt,
-              baseModel: threadSynth.synth.baseModel,
-              chatColor: threadSynth.synth.chatColor,
-              metadata: {}
-            },
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          };
-          
-          // Add to entities store
-          set((state) => ({
-            entities: {
-              ...state.entities,
-              synths: {
-                ...state.entities.synths,
-                [synthId]: synthEntity
+
+      if (missingIds.length > 0) {
+        await Promise.all(missingIds.map(async (synthId) => {
+          try {
+            const synth = await httpDataService.getSynth(synthId);
+            if (!synth) return;
+            set((state) => ({
+              entities: {
+                ...state.entities,
+                synths: {
+                  ...state.entities.synths,
+                  [synthId]: synth
+                }
               }
-            }
-          }), false, 'threads/getThreadSynths/addSynthEntity');
-        }
+            }), false, 'threads/getThreadSynths/addSynthEntity');
+          } catch (error) {
+            console.error(`Error fetching synth ${synthId} for thread ${threadId}:`, error);
+          }
+        }));
       }
       
       return threadSynths;
@@ -442,14 +482,24 @@ export const createThreadsSlice: StateCreator<
   },
   
   addSynthToThread: async (threadId: string, synthId: string, reference: COAITeamSynthReference) => {
+    bumpThreadSynthFetch(threadId);
     try {
-      // Add optimistic update for relationship
-      set((state) => ({
-        relationships: {
-          ...state.relationships,
-          threadSynths: addRelationship(state.relationships.threadSynths, threadId, synthId)
-        }
-      }), false, 'threads/addSynthToThread/optimistic');
+      set((state) => {
+        const existing = state.entities.synths[synthId];
+        return {
+          entities: {
+            ...state.entities,
+            synths: {
+              ...state.entities.synths,
+              [synthId]: existing || synthFromReference(synthId, reference, state.user?.id || '')
+            }
+          },
+          relationships: {
+            ...state.relationships,
+            threadSynths: addRelationship(state.relationships.threadSynths, threadId, synthId)
+          }
+        };
+      }, false, 'threads/addSynthToThread/optimistic');
       
       // Create thread-synth relationship in database
       await directService.addSynthToThread(threadId, synthId, reference);
@@ -471,6 +521,7 @@ export const createThreadsSlice: StateCreator<
   },
   
   removeSynthFromThread: async (threadId: string, synthId: string) => {
+    bumpThreadSynthFetch(threadId);
     try {
       // Apply optimistic update for relationship
       set((state) => ({

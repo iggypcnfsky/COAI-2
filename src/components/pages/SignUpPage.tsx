@@ -1,6 +1,7 @@
 import { SignUp, useAuth } from '@clerk/react';
 import { AuthPageFrame } from '@/components/auth/AuthControls';
 import { Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 
 export function SignUpPage() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -8,15 +9,12 @@ export function SignUpPage() {
   return (
     <AuthPageFrame>
       {isLoaded && isSignedIn ? (
-        <div className="text-center space-y-4 max-w-md">
-          <h1 className="font-serif text-3xl">You’re already signed in</h1>
-          <p className="text-[#a8a29a]">Continue into the studio, or sign out from the top right.</p>
-          <Link
-            to="/start"
-            className="inline-flex items-center px-7 py-3 bg-[#c4a574] text-[#0b0b0c] font-medium tracking-wide hover:bg-[#d4b98a]"
-          >
-            Continue
-          </Link>
+        <div className="w-full max-w-md space-y-4 rounded-lg border border-neutral-200 bg-white p-6 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">You’re already signed in</h1>
+          <p className="text-sm text-neutral-500">Continue into the studio, or sign out from the account menu.</p>
+          <Button asChild>
+            <Link to="/start">Continue</Link>
+          </Button>
         </div>
       ) : (
         <SignUp

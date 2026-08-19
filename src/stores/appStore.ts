@@ -8,6 +8,7 @@ import { createTeamsSlice } from './slices/teamsSlice';
 import { createThreadsSlice } from './slices/threadsSlice';
 import { createMessagesSlice } from './slices/messagesSlice';
 import { createDocumentsSlice } from './slices/documentsSlice';
+import { DEFAULT_MODEL_ID } from '@shared/models';
 
 // Debug flag to enable/disable diagnostic logging
 const DEBUG = false;
@@ -27,7 +28,7 @@ const initialMessageInputState = {
 // Initial profile section state
 const initialProfileSectionState: ProfileSectionState = {
   systemPrompt: '',
-  selectedModel: 'gpt-4o',
+  selectedModel: DEFAULT_MODEL_ID,
   isUpdateSuccessful: false,
   deleteDialogOpen: false
 };

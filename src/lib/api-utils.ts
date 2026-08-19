@@ -57,11 +57,35 @@ export const generateAISynth = async (request: SynthGenerationRequest): Promise<
   if (!result.success) {
     throw new Error(result.error || 'Failed to generate synth');
   }
-  return { ...result.synth, isLoadingImage: false };
+  return { ...result.synth, isLoadingImage: result.synth.isLoadingImage ?? true };
 };
 
+export function isPlaceholderImage(url?: string): boolean {
+  if (!url) return true;
+  return url.startsWith('data:image/svg') || url.includes('placeholder') || url.includes('default-avatar');
+}
+
 export const generateSynthImage = async (synthData: GeneratedSynth & { keywords?: string }): Promise<string> => {
-  return synthData.profileImage;
+  if (synthData.profileImage && !isPlaceholderImage(synthData.profileImage)) {
+    return synthData.profileImage;
+  }
+
+  const result = await apiFetch<{ success: boolean; url?: string; error?: string }>('/generate/image', {
+    method: 'POST',
+    body: JSON.stringify({
+      kind: 'synth',
+      name: synthData.name,
+      role: synthData.role,
+      age: synthData.age,
+      gender: synthData.gender,
+      bio: synthData.bio?.slice(0, 500),
+      keywords: synthData.keywords?.slice(0, 300),
+    }),
+  });
+  if (!result.success || !result.url) {
+    throw new Error(result.error || 'Failed to generate synth image');
+  }
+  return result.url;
 };
 
 export interface GeneratedTeamResult {
@@ -89,8 +113,27 @@ export const generateTeamImage = async (teamData: {
   teamImage?: string;
   profileImage?: string;
   name?: string;
+  description?: string;
+  keywords?: string;
 }): Promise<string> => {
-  return teamData.teamImage || teamData.profileImage || '';
+  const existing = teamData.teamImage || teamData.profileImage || '';
+  if (existing && !isPlaceholderImage(existing)) {
+    return existing;
+  }
+
+  const result = await apiFetch<{ success: boolean; url?: string; error?: string }>('/generate/image', {
+    method: 'POST',
+    body: JSON.stringify({
+      kind: 'team',
+      name: teamData.name || 'Team',
+      description: teamData.description?.slice(0, 500),
+      keywords: teamData.keywords?.slice(0, 300),
+    }),
+  });
+  if (!result.success || !result.url) {
+    throw new Error(result.error || 'Failed to generate team image');
+  }
+  return result.url;
 };
 
 export const generateAITeam = async (request: TeamGenerationRequest): Promise<GeneratedTeamResult> => {

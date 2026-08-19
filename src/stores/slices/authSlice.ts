@@ -166,13 +166,6 @@ export const createAuthSlice: StateCreator<
       }>('/me');
       if (me.profile) get().setProfile(me.profile);
       get().setSubscription(me.user.subscriptionStatus, me.user.onboardedAt, me.user.hasByok);
-      if (me.profile) {
-        try {
-          await get().fetchDocuments();
-        } catch {
-          // documents are optional
-        }
-      }
     } catch (error) {
       console.error('Error loading profile', error);
     }

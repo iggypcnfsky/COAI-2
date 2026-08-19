@@ -5,12 +5,14 @@ import { Input } from '@/components/ui/input';
 import { ColorPicker } from '@/components/ui/color-picker';
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { PlusCircle, X, Save, Check, Trash2, Users } from 'lucide-react';
+import { MessageCircle, X, Save, Check, Trash2, Users } from 'lucide-react';
 import { AIEmployee, TeamMember } from '@/types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModelSelectItems } from '@/components/ModelSelect';
+import { PersonAvatar, isUsableAvatarUrl } from '@/components/ui/PersonAvatar';
 import AddToTeamModal from './AddToTeamModal';
 import { useTeams } from '@/hooks/store/useTeams';
+import { DEFAULT_MODEL_ID } from '@shared/models';
 // Use the Zustand store hooks
 
 
@@ -40,7 +42,7 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
   
   // Use local state for now since we need to properly integrate with Zustand
   const [systemPrompt, setSystemPrompt] = useState('');
-  const [selectedModel, setSelectedModel] = useState<AIEmployee['baseModel']>('gpt-4o');
+  const [selectedModel, setSelectedModel] = useState<AIEmployee['baseModel']>(DEFAULT_MODEL_ID);
   const [editedName, setEditedName] = useState('');
   const [editedRole, setEditedRole] = useState('');
   const [editedAge, setEditedAge] = useState(25);
@@ -239,276 +241,266 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
     );
   }
 
+  const genderLabel = (() => {
+    const gender = synth ? synth.gender : (teamMemberSynth ? teamMemberSynth.gender : editedGender);
+    if (!gender || gender === 'any') return null;
+    return gender.charAt(0).toUpperCase() + gender.slice(1);
+  })();
+
+  const fieldClassName = 'h-9 rounded-full';
+
   return (
-    <div className={`h-full bg-neutral-50 dark:bg-neutral-900 md:border-r border-neutral-200 dark:border-neutral-800 transition-all duration-300 flex flex-col ${
+    <div className={`h-full bg-white dark:bg-neutral-900 md:border-r border-neutral-200 dark:border-neutral-800 transition-all duration-300 flex flex-col ${
       isCollapsed ? 'w-0 overflow-hidden border-0' : 'w-full'
     }`}>
-      <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 flex justify-between items-center gap-2 flex-shrink-0">
-        {/* Action buttons for synths */}
-        {synth && !isEditingTeamMember ? (
-          <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
-            {/* Primary action - Update button for synths */}
-            {onUpdateProfile && (
-              <Button 
+      <div className="relative flex-shrink-0">
+        <div className="h-28 md:h-32 w-full overflow-hidden relative">
+          {isUsableAvatarUrl(displayData.profileImage) ? (
+            <img
+              src={displayData.profileImage}
+              alt=""
+              className="w-full h-full object-cover scale-125 blur-2xl opacity-70"
+            />
+          ) : (
+            <div className="w-full h-full" style={{ backgroundColor: editedChatColor }} />
+          )}
+          <div className="absolute inset-0" style={{ backgroundColor: `${editedChatColor}33` }} />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-white dark:to-neutral-900" />
+        </div>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleCollapse}
+          className="absolute top-2 right-2 h-8 w-8 rounded-full bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm hover:bg-white dark:hover:bg-neutral-800"
+          title="Close profile"
+          aria-label="Close profile"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+
+        <div className="absolute left-1/2 -translate-x-1/2 -bottom-16 md:-bottom-[4.5rem]">
+          <div
+            className="relative h-32 w-32 md:h-36 md:w-36 rounded-full cursor-pointer ring-4 ring-white dark:ring-neutral-900"
+            style={{ boxShadow: `0 0 0 7px ${editedChatColor}` }}
+            onMouseEnter={handleImageMouseEnter}
+            onMouseLeave={handleImageMouseLeave}
+          >
+            <PersonAvatar
+              name={displayData.name}
+              src={displayData.profileImage}
+              alt={displayData.name}
+              className="h-full w-full"
+              fallbackClassName="text-3xl"
+            />
+            <div className={`absolute inset-0 rounded-full overflow-hidden transition-opacity duration-300 ${isImageHovered ? 'opacity-100' : 'opacity-0'}`}>
+              <video
+                ref={videoRef}
+                className="w-full h-full object-cover object-top"
+                muted
+                loop
+                playsInline
+                preload="metadata"
+              >
+                <source src={videoPath} type="video/mp4" />
+              </video>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col flex-1 min-h-0 pt-[4.75rem] md:pt-20">
+        <div className="px-4 pb-3 text-center flex-shrink-0">
+          <label htmlFor="synth-profile-name" className="sr-only">Name</label>
+          {canEditBasicFields ? (
+            <Input
+              id="synth-profile-name"
+              value={editedName}
+              onChange={(e) => {
+                setEditedName(e.target.value);
+                if (isUpdateSuccessful) {
+                  setIsUpdateSuccessful(false);
+                }
+              }}
+              className="text-xl font-semibold h-auto py-1 text-center border-0 shadow-none bg-transparent rounded-none focus-visible:ring-0 focus-visible:border-b focus-visible:border-neutral-300 dark:focus-visible:border-neutral-600"
+              placeholder="Name"
+            />
+          ) : (
+            <h2 className="text-xl font-semibold leading-tight">{displayData.name}</h2>
+          )}
+
+          <label htmlFor="synth-profile-role" className="sr-only">Role</label>
+          {canEditBasicFields ? (
+            <Input
+              id="synth-profile-role"
+              value={editedRole}
+              onChange={(e) => {
+                setEditedRole(e.target.value);
+                if (isUpdateSuccessful) {
+                  setIsUpdateSuccessful(false);
+                }
+              }}
+              className="text-sm text-neutral-500 dark:text-neutral-400 h-auto py-0.5 text-center border-0 shadow-none bg-transparent rounded-none focus-visible:ring-0 focus-visible:border-b focus-visible:border-neutral-300 dark:focus-visible:border-neutral-600"
+              placeholder="Role"
+            />
+          ) : (
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">{displayData.role}</p>
+          )}
+
+          {(synth || teamMemberSynth) && (
+            <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+              {[editedAge, genderLabel].filter(Boolean).join(' · ')}
+            </p>
+          )}
+
+          {synth?.bio && (
+            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400 line-clamp-3">
+              {synth.bio}
+            </p>
+          )}
+
+          <div className="flex items-center justify-center gap-2 flex-wrap mt-4">
+            {synth && !isEditingTeamMember ? (
+              <>
+                {onUpdateProfile && (
+                  <Button
+                    onClick={handleUpdateProfile}
+                    size="sm"
+                    className={`h-8 rounded-full text-white transition-all duration-300 text-xs px-3 ${
+                      isUpdateSuccessful
+                        ? 'bg-emerald-600 hover:bg-emerald-700'
+                        : 'bg-green-600 hover:bg-green-700'
+                    }`}
+                    title="Save changes (⌘+Enter)"
+                  >
+                    {isUpdateSuccessful ? (
+                      <>
+                        <Check className="h-3.5 w-3.5 mr-1" />
+                        Updated
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-3.5 w-3.5 mr-1" />
+                        Update
+                      </>
+                    )}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={handleAddToChat}
+                  className="h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs px-3"
+                  title="Add to current chat"
+                >
+                  <MessageCircle className="h-3.5 w-3.5 mr-1" />
+                  Chat
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddToTeamModal}
+                  className="h-8 rounded-full text-xs px-3"
+                  title="Add to group"
+                >
+                  <Users className="h-3.5 w-3.5 mr-1" />
+                  Group
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDeleteSynth}
+                  className="h-8 w-8 rounded-full p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                  title="Delete synth"
+                  aria-label="Delete synth"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            ) : isEditingTeamMember ? (
+              <Button
                 onClick={handleUpdateProfile}
                 size="sm"
-                className={`h-7 text-white transition-all duration-300 text-xs ${
-                  isUpdateSuccessful 
-                    ? 'bg-emerald-600 hover:bg-emerald-700' 
+                className={`h-8 rounded-full text-white transition-all duration-300 text-xs px-3 ${
+                  isUpdateSuccessful
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
                     : 'bg-green-600 hover:bg-green-700'
                 }`}
                 title="Save changes (⌘+Enter)"
               >
                 {isUpdateSuccessful ? (
                   <>
-                    <Check className="h-3 w-3 sm:mr-1" />
-                    <span className="hidden sm:inline">Updated!</span>
+                    <Check className="h-3.5 w-3.5 mr-1" />
+                    Updated
                   </>
                 ) : (
                   <>
-                    <Save className="h-3 w-3 sm:mr-1" />
-                    <span className="hidden sm:inline">Update</span>
+                    <Save className="h-3.5 w-3.5 mr-1" />
+                    Update
                   </>
                 )}
               </Button>
-            )}
-            
-            {/* Secondary actions */}
-            <Button 
-              size="sm"
-              onClick={handleAddToChat}
-              className="h-7 bg-blue-600 hover:bg-blue-700 text-white text-xs"
-              title="Add to current chat"
-            >
-              <PlusCircle className="h-3 w-3 sm:mr-1" />
-              <span className="hidden sm:inline">Chat</span>
-            </Button>
-            
-            <Button 
-              variant="outline"
-              size="sm"
-              onClick={handleAddToTeamModal}
-              className="h-7 text-xs"
-              title="Add to team"
-            >
-              <Users className="h-3 w-3 sm:mr-1" />
-              <span className="hidden sm:inline">Team</span>
-            </Button>
-            
-            {/* Destructive action - Delete button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDeleteSynth}
-              className="h-7 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 text-xs ml-auto"
-              title="Delete synth"
-            >
-              <Trash2 className="h-3 w-3 sm:mr-1" />
-              <span className="hidden sm:inline">Delete</span>
-            </Button>
-          </div>
-        ) : isEditingTeamMember ? (
-          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-            <Button 
-              onClick={handleUpdateProfile}
-              size="sm"
-              className={`h-7 text-white transition-all duration-300 text-xs ${
-                isUpdateSuccessful 
-                  ? 'bg-emerald-600 hover:bg-emerald-700' 
-                  : 'bg-green-600 hover:bg-green-700'
-              }`}
-              title="Save changes (⌘+Enter)"
-            >
-              {isUpdateSuccessful ? (
-                <>
-                  <Check className="h-3 w-3 sm:mr-1" />
-                  <span className="hidden sm:inline">Updated!</span>
-                </>
-              ) : (
-                <>
-                  <Save className="h-3 w-3 sm:mr-1" />
-                  <span className="hidden sm:inline">Update</span>
-                </>
-              )}
-            </Button>
-          </div>
-        ) : (
-          <div className="flex-1" />
-        )}
-        
-        {/* Close button - always visible */}
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={onToggleCollapse}
-          className="h-7 w-7 flex-shrink-0"
-          title="Close profile"
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-      
-      <div className="flex flex-col h-[calc(100%-60px)] overflow-hidden">
-        <div 
-          className="w-full h-[200px] md:h-[240px] overflow-hidden relative cursor-pointer flex-shrink-0"
-          onMouseEnter={handleImageMouseEnter}
-          onMouseLeave={handleImageMouseLeave}
-        >
-          <img 
-            src={displayData.profileImage} 
-            alt={displayData.name}
-            className="w-full h-full object-cover"
-          />
-          
-          {/* Video overlay - shows on hover */}
-          <div className={`absolute inset-0 transition-opacity duration-300 ${isImageHovered ? 'opacity-100' : 'opacity-0'}`}>
-            <video
-              ref={videoRef}
-              className="w-full h-full object-cover"
-              muted
-              loop
-              playsInline
-              preload="metadata"
-            >
-              <source src={videoPath} type="video/mp4" />
-            </video>
+            ) : null}
           </div>
         </div>
-        
-        <div className="p-4 flex flex-col flex-grow overflow-y-auto min-h-0">
-          {/* Unified Name, role, age and AI model selection */}
-          <div className="mb-4 space-y-3">
-            {/* Name field - always editable when we can update */}
-            <div>
-              <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1 block">Name</label>
-              {canEditBasicFields ? (
-                <Input
-                  value={editedName}
-                  onChange={(e) => {
-                    setEditedName(e.target.value);
-                    if (isUpdateSuccessful) {
-                      setIsUpdateSuccessful(false);
-                    }
-                  }}
-                  className="text-lg font-semibold h-8"
-                  placeholder="Enter name..."
-                />
-              ) : (
-                <div className="text-lg font-semibold h-8 flex items-center px-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md">
-                  {displayData.name}
-                </div>
-              )}
-            </div>
-            
-            {/* Role field - always editable when we can update */}
-            <div>
-              <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1 block">Role</label>
-              {canEditBasicFields ? (
-                <Input
-                  value={editedRole}
-                  onChange={(e) => {
-                    setEditedRole(e.target.value);
-                    if (isUpdateSuccessful) {
-                      setIsUpdateSuccessful(false);
-                    }
-                  }}
-                  className="h-8"
-                  placeholder="Enter role..."
-                />
-              ) : (
-                <div className="h-8 flex items-center px-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md">
-                  {displayData.role}
-                </div>
-              )}
-            </div>
 
-            {/* Age, Gender, and AI Model - combined row for synths and team members who are synths */}
-            {(synth || teamMemberSynth) && (
-              <div className="grid grid-cols-3 gap-3">
-                {/* Age field */}
-                <div>
-                  <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1 block">Age</label>
-                  {canEditAllFields ? (
-                    <Input
-                      type="number"
-                      value={editedAge}
-                      onChange={(e) => {
-                        setEditedAge(parseInt(e.target.value) || 25);
-                        if (isUpdateSuccessful) {
-                          setIsUpdateSuccessful(false);
-                        }
-                      }}
-                      className="h-8"
-                      min="18"
-                      max="100"
-                      placeholder="Age..."
-                    />
-                  ) : (
-                    <div className="h-8 flex items-center px-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md text-sm">
-                      {synth ? synth.age : (teamMemberSynth ? teamMemberSynth.age : editedAge)}
-                    </div>
-                  )}
-                </div>
-
-                {/* Gender field */}
-                <div>
-                  <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1 block">Gender</label>
-                  {canEditAllFields ? (
-                    <Select value={editedGender} onValueChange={(value: 'male' | 'female' | 'non-binary' | 'any') => {
-                      setEditedGender(value);
-                      if (isUpdateSuccessful) {
-                        setIsUpdateSuccessful(false);
-                      }
-                    }}>
-                      <SelectTrigger className="h-8">
-                        <SelectValue placeholder="Gender..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="any">Any</SelectItem>
-                        <SelectItem value="male">Male</SelectItem>
-                        <SelectItem value="female">Female</SelectItem>
-                        <SelectItem value="non-binary">Non-binary</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <div className="h-8 flex items-center px-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md text-sm">
-                      {(() => {
-                        const gender = synth ? synth.gender : (teamMemberSynth ? teamMemberSynth.gender : editedGender);
-                        return gender ? gender.charAt(0).toUpperCase() + gender.slice(1) : 'Any';
-                      })()}
-                    </div>
-                  )}
-                </div>
-
-                {/* AI Model field */}
-                <div>
-                  <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1 block">Model</label>
-                  <Select 
-                    value={selectedModel} 
-                    onValueChange={(value) => {
-                      setSelectedModel(value as AIEmployee['baseModel']);
+        <div className="px-4 pb-4 flex flex-col flex-1 overflow-y-auto min-h-0">
+          {(synth || teamMemberSynth) && (
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div>
+                <label htmlFor="synth-profile-age" className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1 block text-center">Age</label>
+                {canEditAllFields ? (
+                  <Input
+                    id="synth-profile-age"
+                    type="number"
+                    value={editedAge}
+                    onChange={(e) => {
+                      setEditedAge(parseInt(e.target.value) || 25);
                       if (isUpdateSuccessful) {
                         setIsUpdateSuccessful(false);
                       }
                     }}
-                  >
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
+                    className={`${fieldClassName} text-center`}
+                    min="18"
+                    max="100"
+                    placeholder="Age"
+                  />
+                ) : (
+                  <div className={`${fieldClassName} flex items-center justify-center px-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm`}>
+                    {synth ? synth.age : (teamMemberSynth ? teamMemberSynth.age : editedAge)}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="synth-profile-gender" className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1 block text-center">Gender</label>
+                {canEditAllFields ? (
+                  <Select value={editedGender} onValueChange={(value: 'male' | 'female' | 'non-binary' | 'any') => {
+                    setEditedGender(value);
+                    if (isUpdateSuccessful) {
+                      setIsUpdateSuccessful(false);
+                    }
+                  }}>
+                    <SelectTrigger id="synth-profile-gender" className={fieldClassName}>
+                      <SelectValue placeholder="Gender" />
                     </SelectTrigger>
                     <SelectContent>
-                      <ModelSelectItems />
+                      <SelectItem value="any">Any</SelectItem>
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="non-binary">Non-binary</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                ) : (
+                  <div className={`${fieldClassName} flex items-center justify-center px-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm`}>
+                    {genderLabel || 'Any'}
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* AI Model selection for team members who are not synths */}
-            {!synth && !teamMemberSynth && teamMember && (
               <div>
-                <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1 block">AI Model</label>
-                <Select 
-                  value={selectedModel} 
+                <label htmlFor="synth-profile-model" className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1 block text-center">Model</label>
+                <Select
+                  value={selectedModel}
                   onValueChange={(value) => {
                     setSelectedModel(value as AIEmployee['baseModel']);
                     if (isUpdateSuccessful) {
@@ -516,21 +508,42 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
                     }
                   }}
                 >
-                  <SelectTrigger className="h-8 text-sm">
+                  <SelectTrigger id="synth-profile-model" className={`${fieldClassName} text-sm`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <ModelSelectItems />
+                    <ModelSelectItems currentId={selectedModel} />
                   </SelectContent>
                 </Select>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Chat Color Picker - for both synths and team members */}
+          {!synth && !teamMemberSynth && teamMember && (
+            <div className="mb-3">
+              <label htmlFor="synth-profile-model" className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1 block">AI Model</label>
+              <Select
+                value={selectedModel}
+                onValueChange={(value) => {
+                  setSelectedModel(value as AIEmployee['baseModel']);
+                  if (isUpdateSuccessful) {
+                    setIsUpdateSuccessful(false);
+                  }
+                }}
+              >
+                <SelectTrigger id="synth-profile-model" className={`${fieldClassName} text-sm`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <ModelSelectItems currentId={selectedModel} />
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {(synth || teamMember) && canEditBasicFields && (
-            <div>
-              <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1 block">Chat Color</label>
+            <div className="mb-3">
+              <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1 block">Chat Color</label>
               <ColorPicker
                 value={editedChatColor}
                 onChange={(color) => {
@@ -544,22 +557,20 @@ const ProfileSection: React.FC<ProfileSectionProps> = ({
             </div>
           )}
 
-          {/* Prompt section - now takes up most of the space */}
           <div className="flex-grow flex flex-col min-h-0">
-            <h4 className="text-sm font-medium mb-3 text-neutral-700 dark:text-neutral-300">
+            <h4 className="text-xs font-medium mb-2 text-neutral-500 dark:text-neutral-400">
               {isEditingTeamMember ? 'Custom Prompt' : 'Prompt'}
             </h4>
             <Textarea
               value={systemPrompt}
               onChange={(e) => {
                 setSystemPrompt(e.target.value);
-                // Reset success state when user starts editing
                 if (isUpdateSuccessful) {
                   setIsUpdateSuccessful(false);
                 }
               }}
               placeholder={isEditingTeamMember ? "Enter custom prompt for this team member..." : "Enter prompt..."}
-              className="flex-grow resize-none min-h-[200px] text-sm"
+              className="flex-grow resize-none min-h-[160px] text-sm rounded-2xl"
             />
           </div>
         </div>

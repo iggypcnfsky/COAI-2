@@ -3,13 +3,12 @@
 @tailwind utilities;
 
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Google Sans Flex', ui-sans-serif, system-ui, sans-serif;
+  font-optical-sizing: auto;
   line-height: 1.5;
   font-weight: 400;
 
   color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -83,9 +82,27 @@ body {
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground;
+  html, body, #root {
+    font-family: 'Google Sans Flex', ui-sans-serif, system-ui, sans-serif;
   }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+.cl-rootBox,
+.cl-card,
+.cl-cardBox,
+.cl-userButtonPopoverCard,
+.cl-modalContent,
+.cl-userProfile-root,
+.cl-navbar,
+.cl-pageScrollBox,
+.cl-headerTitle,
+.cl-formButtonPrimary,
+.cl-socialButtonsBlockButton,
+.cl-footerAction {
+  font-family: 'Google Sans Flex', ui-sans-serif, system-ui, sans-serif;
 }
 
 /* Custom transitions */

@@ -5,37 +5,63 @@ export interface ModelOption {
 }
 
 export const MODEL_CATALOG: ModelOption[] = [
-  { id: 'gpt-4o', label: 'GPT-4o', openrouter: 'openai/gpt-4o' },
-  { id: 'gpt-4.1', label: 'GPT-4.1', openrouter: 'openai/gpt-4.1' },
-  { id: 'gpt-4.1-nano', label: 'GPT-4.1 Nano', openrouter: 'openai/gpt-4.1-nano' },
-  { id: 'chatgpt-4o-latest', label: 'ChatGPT-4o Latest', openrouter: 'openai/chatgpt-4o-latest' },
-  { id: 'o4-mini', label: 'o4 Mini', openrouter: 'openai/o4-mini' },
-  { id: 'o3', label: 'o3', openrouter: 'openai/o3' },
-  { id: 'o1', label: 'o1', openrouter: 'openai/o1' },
-  { id: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet', openrouter: 'anthropic/claude-3.5-sonnet' },
-  { id: 'claude-4-sonnet', label: 'Claude 4 Sonnet', openrouter: 'anthropic/claude-sonnet-4' },
-  { id: 'claude-4-opus', label: 'Claude 4 Opus', openrouter: 'anthropic/claude-opus-4' },
-  { id: 'sonar', label: 'Perplexity Sonar', openrouter: 'perplexity/sonar' },
-  { id: 'sonar-pro', label: 'Perplexity Sonar Pro', openrouter: 'perplexity/sonar-pro' },
-  { id: 'sonar-reasoning', label: 'Perplexity Sonar Reasoning', openrouter: 'perplexity/sonar-reasoning' },
-  { id: 'sonar-reasoning-pro', label: 'Perplexity Sonar Reasoning Pro', openrouter: 'perplexity/sonar-reasoning-pro' },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', openrouter: 'google/gemini-2.5-flash' },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', openrouter: 'google/gemini-2.5-pro' },
+  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', openrouter: 'google/gemini-3.7-flash' },
+  { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', openrouter: 'openai/gpt-5.6-luna' },
+  { id: 'gpt-oss-safeguard-20b', label: 'GPT OSS Safeguard 20B', openrouter: 'openai/gpt-oss-safeguard-20b' },
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5', openrouter: 'anthropic/claude-sonnet-5' },
+  { id: 'kimi-k3', label: 'Kimi K3', openrouter: 'moonshotai/kimi-k3' },
 ];
 
-export const DEFAULT_MODEL_ID = 'claude-3-5-sonnet';
+export const DEFAULT_MODEL_ID = 'gemini-3.7-flash';
 
 export const MODEL_IDS = MODEL_CATALOG.map((m) => m.id);
 
 export type ModelId = (typeof MODEL_CATALOG)[number]['id'];
 
+const LEGACY_OPENROUTER: Record<string, string> = {
+  'gpt-4o': 'openai/gpt-4o',
+  'gpt-4.1': 'openai/gpt-4.1',
+  'gpt-4.1-nano': 'openai/gpt-4.1-nano',
+  'chatgpt-4o-latest': 'openai/chatgpt-4o-latest',
+  'o4-mini': 'openai/o4-mini',
+  'o3': 'openai/o3',
+  'o1': 'openai/o1',
+  'claude-3-5-sonnet': 'anthropic/claude-3.5-sonnet',
+  'claude-4-sonnet': 'anthropic/claude-sonnet-4',
+  'claude-4-opus': 'anthropic/claude-opus-4',
+  'sonar': 'perplexity/sonar',
+  'sonar-pro': 'perplexity/sonar-pro',
+  'sonar-reasoning': 'perplexity/sonar-reasoning',
+  'sonar-reasoning-pro': 'perplexity/sonar-reasoning-pro',
+  'gemini-2.5-flash': 'google/gemini-2.5-flash',
+  'gemini-2.5-pro': 'google/gemini-2.5-pro',
+};
+
 export function toOpenRouterModel(id: string): string {
   const match = MODEL_CATALOG.find((m) => m.id === id);
   if (match) return match.openrouter;
+  if (LEGACY_OPENROUTER[id]) return LEGACY_OPENROUTER[id];
   if (id.includes('/')) return id;
-  return 'openai/gpt-4o';
+  const fallback = MODEL_CATALOG.find((m) => m.id === DEFAULT_MODEL_ID);
+  return fallback?.openrouter ?? id;
 }
 
 export function isKnownModel(id: string): boolean {
   return MODEL_CATALOG.some((m) => m.id === id);
+}
+
+export function visibleCatalog(hiddenIds?: string[] | null, includeId?: string): ModelOption[] {
+  const hidden = new Set(hiddenIds ?? []);
+  const visible = MODEL_CATALOG.filter((m) => !hidden.has(m.id) || m.id === includeId);
+  if (includeId && !visible.some((m) => m.id === includeId)) {
+    const legacy = LEGACY_OPENROUTER[includeId];
+    visible.unshift({
+      id: includeId,
+      label: includeId,
+      openrouter: legacy || includeId,
+    });
+  }
+  if (visible.length > 0) return visible;
+  const fallback = MODEL_CATALOG.find((m) => m.id === includeId) || MODEL_CATALOG.find((m) => m.id === DEFAULT_MODEL_ID);
+  return fallback ? [fallback] : MODEL_CATALOG.slice(0, 1);
 }

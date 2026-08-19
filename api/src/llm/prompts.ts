@@ -65,7 +65,52 @@ Return ONLY valid JSON:
   "required_roles": [{"role": "2-3 words", "why": "one sentence"}]
 }
 
-required_roles MUST contain exactly ${teamSize} roles.
-Average member age around ${averageAge}.
+required_roles MUST contain exactly ${teamSize} DIFFERENT complementary roles. Never repeat a role.
+Average member age around ${averageAge}, but members should not all be the same age.
 BE LITERAL to the keywords.`;
+}
+
+export function groupRosterPrompt(
+  keywords: string,
+  teamSize: number,
+  averageAge: number,
+  genderDistribution?: { male?: number; female?: number; nonBinary?: number }
+) {
+  const minAge = Math.max(18, averageAge - 14);
+  const maxAge = Math.min(72, averageAge + 14);
+  const male = genderDistribution?.male ?? 34;
+  const female = genderDistribution?.female ?? 34;
+  const nonBinary = genderDistribution?.nonBinary ?? 32;
+
+  return `Create a group of ${teamSize} DISTINCT people from these keywords: "${keywords}"
+
+DIVERSITY IS MANDATORY. The group must feel like real different people, not clones.
+- Every member MUST have a unique first name AND a unique last name. Never reuse a surname.
+- Do not invent lookalike names (no Claire Sterling twice, no Claire Sterling / Clara Sterling).
+- Ages MUST all be different integers between ${minAge} and ${maxAge}, spread around ${averageAge} — never give two people the same age.
+- Mix genders roughly ${male}% male, ${female}% female, ${nonBinary}% non-binary unless the keywords clearly require a specific mix.
+- Each role must be different and complementary. Never duplicate a role or slightly rephrase the same job.
+- Give each person a distinct personality, background, speaking style, and life situation.
+- Stay literal to the keywords, but vary who these people ARE within that brief.
+
+Return ONLY valid JSON:
+{
+  "team_name": "short distinctive group name",
+  "team_description": "1-2 sentences",
+  "collaboration_style": "how they work together",
+  "members": [
+    {
+      "name": "First Last",
+      "age": number,
+      "gender": "male" | "female" | "non-binary",
+      "role": "2-3 words",
+      "bio": "2-3 sentence bio",
+      "personality_traits": ["trait1", "trait2", "trait3"],
+      "background": "brief background",
+      "current_situation": "current life situation"
+    }
+  ]
+}
+
+members MUST contain exactly ${teamSize} people. Return only the JSON object.`;
 }

@@ -3,7 +3,7 @@ import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { getUserByClerkId } from '../lib/users.js';
 import { createOpenRouterClient } from '../llm/openrouter.js';
-import { toOpenRouterModel } from '../../../shared/models.js';
+import { DEFAULT_MODEL_ID, toOpenRouterModel } from '../../../shared/models.js';
 
 export const chatRoutes = new Hono();
 
@@ -14,7 +14,7 @@ const chatSchema = z.object({
     image: z.unknown().optional(),
   })),
   role: z.string().optional(),
-  model: z.string().default('gpt-4o'),
+  model: z.string().default(DEFAULT_MODEL_ID),
   employeePrompt: z.string().optional(),
   employeeName: z.string().optional(),
 });
@@ -34,7 +34,9 @@ chatRoutes.post('/', async (c) => {
     const role = message.role === 'assistant' ? 'assistant' : 'user';
     if (message.image && typeof message.image === 'object') {
       const image = message.image as { base64?: string; type?: string; url?: string };
-      const url = image.url || (image.base64 ? `data:${image.type || 'image/png'};base64,${image.base64}` : null);
+      const url = image.url && /^https?:\/\//i.test(image.url)
+        ? image.url
+        : (image.base64 ? `data:${image.type || 'image/png'};base64,${image.base64}` : null);
       if (url) {
         messages.push({
           role,

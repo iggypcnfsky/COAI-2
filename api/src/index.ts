@@ -13,6 +13,7 @@ import { messageRoutes } from './routes/messages.js';
 import { documentRoutes } from './routes/documents.js';
 import { chatRoutes } from './routes/chat.js';
 import { generateRoutes } from './routes/generate.js';
+import { uploadRoutes } from './routes/uploads.js';
 import { billingRoutes } from './routes/billing.js';
 import { webhookRoutes } from './routes/webhooks.js';
 
@@ -49,12 +50,15 @@ gated.route('/messages', messageRoutes);
 gated.route('/documents', documentRoutes);
 gated.use('/chat/*', rateLimit(30, 60_000));
 gated.use('/generate/*', rateLimit(20, 60_000));
+gated.use('/uploads', rateLimit(20, 60_000));
+gated.use('/uploads/*', rateLimit(20, 60_000));
 gated.route('/chat', chatRoutes);
 gated.route('/generate', generateRoutes);
+gated.route('/uploads', uploadRoutes);
 
 authed.route('/', gated);
 app.route('/api/v1', authed);
 
 serve({ fetch: app.fetch, port: env.port, hostname: '0.0.0.0' }, (info) => {
-  console.log(`COAI API listening on ${info.address}:${info.port} (stripe ${env.stripeMode})`);
+  console.log(`COAI API listening on ${info.address}:${info.port} (stripe ${env.stripeMode}, replicate ${env.replicateApiToken ? 'on' : 'off'})`);
 });

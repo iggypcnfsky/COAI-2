@@ -1,71 +1,65 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth, useClerk, useUser } from '@clerk/react';
+import { useAuth } from '@clerk/react';
+import { Button } from '@/components/ui/button';
+import Logo from '@/components/Logo';
+import { AccountMenu } from '@/components/account/AccountMenu';
 
 export function AuthControls({ showContinue = false }: { showContinue?: boolean }) {
   const { isLoaded, isSignedIn } = useAuth();
-  const { user } = useUser();
-  const { signOut } = useClerk();
 
   if (!isLoaded) {
-    return <span className="text-xs uppercase tracking-[0.2em] text-[#5c5a57]">…</span>;
+    return <span className="text-xs text-neutral-400">…</span>;
   }
 
   if (!isSignedIn) {
     return (
-      <div className="flex items-center gap-4">
-        <Link
-          to="/sign-in"
-          className="text-sm tracking-widest uppercase text-[#a8a29a] hover:text-[#e8e2d6]"
-        >
-          Sign in
-        </Link>
-        <Link
-          to="/sign-up"
-          className="text-sm tracking-widest uppercase px-3 py-1.5 bg-[#c4a574] text-[#0b0b0c] hover:bg-[#d4b98a]"
-        >
-          Sign up
-        </Link>
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/sign-in">Sign in</Link>
+        </Button>
+        <Button size="sm" asChild>
+          <Link to="/sign-up">Sign up</Link>
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-4">
-      {user?.primaryEmailAddress?.emailAddress && (
-        <span className="hidden sm:inline text-xs text-[#a8a29a] max-w-[16rem] truncate">
-          {user.primaryEmailAddress.emailAddress}
-        </span>
-      )}
+    <div className="flex items-center gap-2">
       {showContinue && (
-        <Link
-          to="/start"
-          className="text-sm tracking-widest uppercase text-[#c4a574] hover:text-[#d4b98a]"
-        >
-          Continue
-        </Link>
+        <Button size="sm" asChild>
+          <Link to="/start">Continue</Link>
+        </Button>
       )}
-      <button
-        type="button"
-        onClick={() => void signOut({ redirectUrl: '/' })}
-        className="text-sm tracking-widest uppercase text-[#a8a29a] hover:text-[#e8e2d6]"
-      >
-        Sign out
-      </button>
+      <AccountMenu />
     </div>
+  );
+}
+
+export function MarketingHeader({ showContinue = false }: { showContinue?: boolean }) {
+  return (
+    <header className="w-full bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 p-2 md:p-4 flex flex-row justify-between items-center">
+      <Link to="/" className="flex items-center">
+        <Logo
+          size="24px"
+          color="#6b7280"
+          className="md:w-8 md:h-8"
+        />
+        <span className="inline-flex items-center px-2 py-1 ml-2 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 text-xs font-medium">
+          beta
+        </span>
+      </Link>
+      <AuthControls showContinue={showContinue} />
+    </header>
   );
 }
 
 export function AuthPageFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#0b0b0c] text-[#e8e2d6]">
-      <header className="flex items-center justify-between px-6 md:px-12 py-6">
-        <Link to="/" className="font-serif text-xl tracking-wide">
-          COAI
-        </Link>
-        <AuthControls />
-      </header>
-      <div className="grid place-items-center px-6 pb-16">{children}</div>
+    <div className="min-h-screen bg-white text-neutral-900">
+      <MarketingHeader />
+      <div className="grid place-items-center px-6 py-16">{children}</div>
     </div>
   );
 }

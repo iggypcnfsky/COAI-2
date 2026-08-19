@@ -1,10 +1,14 @@
-import { MODEL_CATALOG } from '@shared/models';
+import { MODEL_CATALOG, visibleCatalog } from '@shared/models';
 import { SelectItem } from '@/components/ui/select';
+import { useAppStore } from '@/stores/appStore';
 
-export function ModelSelectItems() {
+export function ModelSelectItems({ currentId }: { currentId?: string } = {}) {
+  const hiddenModelIds = useAppStore((s) => s.profile?.profile_data?.preferences?.hiddenModelIds);
+  const models = visibleCatalog(hiddenModelIds, currentId);
+
   return (
     <>
-      {MODEL_CATALOG.map((model) => (
+      {models.map((model) => (
         <SelectItem key={model.id} value={model.id}>
           {model.label}
         </SelectItem>

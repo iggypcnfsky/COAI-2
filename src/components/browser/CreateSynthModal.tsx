@@ -1,20 +1,19 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModelSelectItems } from '@/components/ModelSelect';
-import { Slider } from '@/components/ui/slider';
 import { Upload, X, Wand2, User, Loader2, Sparkles } from 'lucide-react';
 import { AIEmployee } from '@/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { generateAISynth } from '@/lib/api-utils';
-import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import Logo from '@/components/Logo';
 import { getRandomChatColor } from '@/lib/utils/colors';
+import { DEFAULT_MODEL_ID } from '@shared/models';
 
 interface CreateSynthModalProps {
   isOpen: boolean;
@@ -60,7 +59,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
 
   // AI form state
   const [aiKeywords, setAiKeywords] = useState('');
-  const [aiBaseModel, setAiBaseModel] = useState('claude-3-5-sonnet');
+  const [aiBaseModel, setAiBaseModel] = useState(DEFAULT_MODEL_ID);
   const [averageAge, setAverageAge] = useState(35);
   const [gender, setGender] = useState('any');
 
@@ -147,6 +146,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
       experience: generatedSynth.experience,
       chatColor: getRandomChatColor(),
       isPublic,
+      isLoadingImage: true,
     };
 
     onSave(newSynth);
@@ -188,7 +188,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
     });
     setImagePreview('');
     setAiKeywords('');
-    setAiBaseModel('claude-3-5-sonnet');
+    setAiBaseModel(DEFAULT_MODEL_ID);
     setAverageAge(35);
     setGender('any');
     setGeneratedSynth(null);
@@ -197,138 +197,73 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
     onClose();
   };
 
+  if (!isOpen) return null;
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[95vh] overflow-y-auto">
-        <DialogHeader className="pb-4">
-          <DialogTitle className="flex items-center justify-center gap-3 text-2xl">
-            <Logo size={32} color="#8b5cf6" />
-            Create New Synth
-          </DialogTitle>
-        </DialogHeader>
-        
+    <div className="h-full flex flex-col bg-white dark:bg-neutral-900">
+      <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-2 shrink-0">
+        <h2 className="text-sm font-medium">Create synth</h2>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleClose}
+          className="h-7 w-7"
+          title="Close"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="p-3">
         {/* AI/Manual Toggle and Content */}
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'ai' | 'manual')} className="w-full">
-          <div className="flex justify-center mb-6">
-            <TabsList className="grid w-full max-w-md grid-cols-2 h-12">
-              <TabsTrigger value="ai" className="flex items-center gap-2 text-base">
-                <Wand2 className="h-5 w-5" />
+          <div className="mb-4">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="ai" className="flex items-center gap-2">
+                <Wand2 className="h-4 w-4" />
                 AI
               </TabsTrigger>
-              <TabsTrigger value="manual" className="flex items-center gap-2 text-base">
-                <User className="h-5 w-5" />
+              <TabsTrigger value="manual" className="flex items-center gap-2">
+                <User className="h-4 w-4" />
                 Manual
               </TabsTrigger>
             </TabsList>
           </div>
 
           {/* AI-Powered Creation Tab */}
-          <TabsContent value="ai" className="space-y-6 mt-0">
-            <div className="space-y-6">
-              {/* Keywords Input - Bigger */}
-              <div className="space-y-3">
-                <Label htmlFor="ai-keywords" className="text-lg font-semibold">
-                  Describe Your Synth
-                </Label>
-                <Textarea
-                  id="ai-keywords"
-                  value={aiKeywords}
-                  onChange={(e) => setAiKeywords(e.target.value)}
-                  placeholder="e.g., creative designer with 10 years experience, marketing expert specializing in social media, friendly data scientist who loves explaining complex concepts..."
-                  disabled={isGenerating}
-                  className="min-h-[120px] text-base resize-none"
-                />
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  Be specific about the role, personality, expertise, and any special traits you want. The more detail, the better the result.
-                </p>
-              </div>
+          <TabsContent value="ai" className="space-y-4 mt-0">
+            <div className="space-y-3">
+              <Label htmlFor="ai-keywords" className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                Describe your synth
+              </Label>
+              <Textarea
+                id="ai-keywords"
+                value={aiKeywords}
+                onChange={(e) => setAiKeywords(e.target.value)}
+                placeholder="e.g., creative designer with 10 years experience, marketing expert specializing in social media..."
+                disabled={isGenerating}
+                className="min-h-[120px] text-sm resize-none"
+              />
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                Be specific about the role, personality, and expertise.
+              </p>
+            </div>
 
-              {/* Settings Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* AI Model */}
-                <div className="space-y-3">
-                  <Label htmlFor="ai-model" className="text-base font-medium">AI Model</Label>
-                  <Select value={aiBaseModel} onValueChange={setAiBaseModel} disabled={isGenerating}>
-                    <SelectTrigger className="h-12">
-                      <SelectValue placeholder="Select AI model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <ModelSelectItems />
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Gender */}
-                <div className="space-y-3">
-                  <Label htmlFor="ai-gender" className="text-base font-medium">Gender</Label>
-                  <Select value={gender} onValueChange={setGender} disabled={isGenerating}>
-                    <SelectTrigger className="h-12">
-                      <SelectValue placeholder="Select gender" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="any">Any</SelectItem>
-                      <SelectItem value="male">Male</SelectItem>
-                      <SelectItem value="female">Female</SelectItem>
-                      <SelectItem value="non-binary">Non-binary</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Age Slider */}
-              <div className="space-y-4">
-                <Label htmlFor="ai-average-age" className="text-base font-medium">Age</Label>
-                <div className="space-y-3">
-                  <Slider
-                    value={[averageAge]}
-                    onValueChange={(value) => setAverageAge(value[0])}
-                    max={120}
-                    min={18}
-                    step={1}
-                    disabled={isGenerating}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-sm text-neutral-600 dark:text-neutral-400">
-                    <span>18</span>
-                    <span className="font-semibold text-lg text-neutral-900 dark:text-neutral-100">{averageAge} years old</span>
-                    <span>120</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Public/Private Toggle */}
-              <div className="flex items-center space-x-3 p-4 bg-neutral-50 dark:bg-neutral-900 rounded-lg">
-                <Checkbox 
-                  id="ai-is-public" 
-                  checked={isPublic} 
-                  onCheckedChange={(checked) => setIsPublic(checked as boolean)}
-                  className="h-5 w-5"
-                />
-                <div className="flex-1">
-                  <Label htmlFor="ai-is-public" className="text-base font-medium cursor-pointer">
-                    Make this synth public
-                  </Label>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                    Public synths can be discovered and used by other users
-                  </p>
-                </div>
-              </div>
-
-              {/* Generate Button */}
               <Button 
                 onClick={handleGenerateAISynth}
                 disabled={isGenerating || !aiKeywords.trim()}
-                className="w-full h-16 text-lg font-semibold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 transition-all duration-200"
+                className="w-full h-9 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
               >
                 {isGenerating ? (
                   <>
-                    <Loader2 className="h-6 w-6 mr-3 animate-spin" />
-                    Generating Synth...
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating...
                   </>
                 ) : (
                   <>
-                    <Logo size={24} color="white" className="mr-3" />
-                    Generate AI Synth
+                    <Logo size={16} color="white" className="mr-2" />
+                    Generate synth
                   </>
                 )}
               </Button>
@@ -388,14 +323,13 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
                   </CardContent>
                 </Card>
               )}
-            </div>
           </TabsContent>
 
           {/* Manual Creation Tab */}
-          <TabsContent value="manual" className="space-y-6 mt-0">
+          <TabsContent value="manual" className="space-y-3 mt-0">
           {/* Image Upload */}
           <div className="space-y-2">
-            <Label>Profile Image</Label>
+            <Label className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Profile Image</Label>
             <div className="flex items-center gap-4">
               {imagePreview ? (
                 <div className="relative">
@@ -438,7 +372,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
 
           {/* Name */}
           <div className="space-y-2">
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name" className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Name *</Label>
             <Input
               id="name"
               value={formData.name}
@@ -449,7 +383,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
 
           {/* Age */}
           <div className="space-y-2">
-            <Label htmlFor="age">Age</Label>
+            <Label htmlFor="age" className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Age</Label>
             <Input
               id="age"
               type="number"
@@ -463,7 +397,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
 
           {/* Gender */}
           <div className="space-y-2">
-            <Label htmlFor="manual-gender">Gender</Label>
+            <Label htmlFor="manual-gender" className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Gender</Label>
             <Select value={formData.gender} onValueChange={(value) => handleInputChange('gender', value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select gender" />
@@ -479,7 +413,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
 
           {/* Role */}
           <div className="space-y-2">
-            <Label htmlFor="role">Role *</Label>
+            <Label htmlFor="role" className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Role *</Label>
             <Input
               id="role"
               value={formData.role}
@@ -490,7 +424,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
 
           {/* Model */}
           <div className="space-y-2">
-            <Label htmlFor="model">AI Model *</Label>
+            <Label htmlFor="model" className="text-xs font-medium text-neutral-600 dark:text-neutral-400">AI Model *</Label>
             <Select value={formData.baseModel} onValueChange={(value) => handleInputChange('baseModel', value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select AI model" />
@@ -503,7 +437,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
 
           {/* Prompt */}
           <div className="space-y-2">
-            <Label htmlFor="prompt">System Prompt *</Label>
+            <Label htmlFor="prompt" className="text-xs font-medium text-neutral-600 dark:text-neutral-400">System Prompt *</Label>
             <Textarea
               id="prompt"
               value={formData.systemPrompt}
@@ -515,43 +449,29 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
               This prompt will define how the synth behaves and responds in conversations.
             </p>
           </div>
-
-          <div className="flex items-center space-x-2">
-            <Checkbox 
-              id="manual-is-public" 
-              checked={isPublic} 
-              onCheckedChange={(checked) => setIsPublic(checked as boolean)}
-            />
-            <Label htmlFor="manual-is-public" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-              Make this synth public
-            </Label>
-            <p className="text-xs text-neutral-500 ml-2">
-              Public synths can be seen and used by other users
-            </p>
-          </div>
         </TabsContent>
         </Tabs>
+        </div>
+      </ScrollArea>
 
-        <DialogFooter className="pt-6">
-          <Button variant="outline" onClick={handleClose} className="h-12 px-6">
+        <div className="p-3 border-t border-neutral-200 dark:border-neutral-800 flex gap-2 shrink-0">
+          <Button variant="outline" onClick={handleClose} className="flex-1">
             Cancel
           </Button>
-          {activeTab === 'ai' ? (
+          {activeTab === 'ai' && generatedSynth ? (
             <Button 
               onClick={handleSaveAISynth}
-              disabled={!generatedSynth}
-              className="h-12 px-6"
+              className="flex-1"
             >
-              Create AI Synth
+              Create synth
             </Button>
-          ) : (
-            <Button onClick={handleSaveManual} className="h-12 px-6">
-              Create Synth
+          ) : activeTab === 'manual' ? (
+            <Button onClick={handleSaveManual} className="flex-1">
+              Create synth
             </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          ) : null}
+        </div>
+    </div>
   );
 };
 

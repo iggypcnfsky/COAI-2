@@ -9,6 +9,8 @@ import { ModelSelectItems } from '@/components/ModelSelect';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import MarkdownRenderer from './MarkdownRenderer';
 import { getRoleInfo } from '@/lib/roleColors';
+import { PersonAvatar } from '@/components/ui/PersonAvatar';
+import { useAuth } from '@/hooks/store/useAuth';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -30,6 +32,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   const isUserMessage = message.sender === 'user';
   const formattedTime = format(message.timestamp, 'h:mm a');
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
+  const { user, profile } = useAuth();
+  const userName =
+    [user?.firstName, user?.lastName].filter(Boolean).join(' ') ||
+    profile?.profile_data?.displayName ||
+    user?.email ||
+    'You';
+  const userAvatar = user?.imageUrl || profile?.profile_data?.avatar;
   
   // Get current synth model from team members (live data) instead of message data (historical)
   const getCurrentSynthModel = () => {
@@ -111,19 +120,34 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
 
   const customChatColor = getCustomChatColor();
 
+  const liveSynth = message.aiEmployee
+    ? teamMembers.find(member => member.id === message.aiEmployee?.id) ||
+      employees.find(emp => emp.id === message.aiEmployee?.id)
+    : undefined;
+  const synthAvatar = liveSynth?.profileImage || message.aiEmployee?.profileImage;
+  const synthName = liveSynth?.name || message.aiEmployee?.name;
+
   return (
     <div 
-      className={`mb-7 ${isUserMessage ? 'flex justify-end' : 'flex justify-start'} ${
+      className={`mb-7 flex ${isUserMessage ? 'justify-end' : 'justify-start'} ${
         isDemo ? 'opacity-50' : ''
       } group`}
     >
-      <div className={`max-w-[65ch] max-w-[40%] ${isUserMessage ? 'order-2' : 'order-1'}`}>
+      <div className={`flex items-start gap-2 max-w-[65ch] max-w-[40%] ${isUserMessage ? 'flex-row-reverse' : ''}`}>
+        {isUserMessage && (
+          <PersonAvatar
+            name={userName}
+            src={userAvatar}
+            className="h-7 w-7 mt-1 shrink-0"
+          />
+        )}
+      <div className="min-w-0">
         {!isUserMessage && message.aiEmployee && (
           <div className="flex items-center mb-1.5">
-            <img
-              src={message.aiEmployee.profileImage}
-              alt={message.aiEmployee.name}
-              className="w-7 h-7 rounded-full mr-2 object-cover"
+            <PersonAvatar
+              name={synthName}
+              src={synthAvatar}
+              className="h-7 w-7 mr-2"
             />
             <div className="flex items-center">
               <span className="text-sm font-medium mr-1">{message.aiEmployee.name}</span>
@@ -155,7 +179,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <ModelSelectItems />
+                          <ModelSelectItems currentId={currentModel || message.aiEmployee?.model} />
                         </SelectContent>
                       </Select>
                     </div>
@@ -173,10 +197,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         )}
         
         <div 
-          className={`relative rounded-2xl px-5 py-5 shadow-none ${
+          className={`relative px-3 py-2 shadow-none ${
             isUserMessage
-              ? 'bg-transparent border-4 border-neutral-200 text-black dark:text-white ml-4'
-              : 'text-neutral-900 dark:text-neutral-100 mr-4'
+              ? 'rounded-3xl rounded-tr-none bg-neutral-200 dark:bg-neutral-700 text-black dark:text-white'
+              : 'rounded-3xl rounded-tl-none text-neutral-900 dark:text-neutral-100'
           }`}
           style={
             !isUserMessage && customChatColor
@@ -229,6 +253,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             {formattedTime}
           </p>
         </div>
+      </div>
       </div>
     </div>
   );
