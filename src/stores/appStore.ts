@@ -251,14 +251,14 @@ export const resetStore = () => {
   // }
 };
 
-// Utility to access current store state
-export const getState = () => {
+// Function declaration so circular imports cannot hit a TDZ on this binding.
+export function getState() {
   const state = useAppStore.getState();
   if (DEBUG) {
     console.log('DEBUG - getState called, current state:', state);
     console.log('DEBUG - Current messageInput:', state.ui?.messageInput);
   }
   return state;
-};
+}
 
  

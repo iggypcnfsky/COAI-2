@@ -7,7 +7,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { IDataService, httpDataService } from './dataService';
 import { apiStream, apiUpload } from '../api/client';
-import { getState } from '../../stores';
+import { useAppStore } from '../../stores/appStore';
 import { DEFAULT_MODEL_ID } from '@shared/models';
 import { 
   COAISynth, 
@@ -68,7 +68,7 @@ class DirectService implements IDataService {
   
   // Get current user ID (temporary or authenticated)
   getCurrentUserId(): string | null {
-    return getState().user?.id || null;
+    return useAppStore.getState().user?.id || null;
   }
   
   // Get temporary user ID (for conversion purposes)
@@ -651,7 +651,6 @@ class DirectService implements IDataService {
           });
         },
         speak: async (participant, messages, systemPrompt) => {
-          const { getState } = await import('../../stores');
           const employee = {
             id: participant.synthId,
             name: participant.name,
@@ -661,7 +660,7 @@ class DirectService implements IDataService {
           };
           const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-          let state = getState();
+          let state = useAppStore.getState();
           let streamingMessageId = await state.startMessageStream(threadId, '', employee);
           let openBuffer = '';
           let fullContent = '';
@@ -669,7 +668,7 @@ class DirectService implements IDataService {
           let bubblesEmitted = 0;
 
           const closeBubble = async (text: string) => {
-            state = getState();
+            state = useAppStore.getState();
             state.setMessageStreamContent(streamingMessageId, text);
             await state.completeMessageStream(streamingMessageId);
             streamingMessageId = '';
@@ -678,15 +677,15 @@ class DirectService implements IDataService {
           };
 
           const showText = async (target: string) => {
-            state = getState();
+            state = useAppStore.getState();
             if (!streamingMessageId) {
               streamingMessageId = await state.startMessageStream(threadId, '', employee);
               displayed = '';
-              state = getState();
+              state = useAppStore.getState();
             }
             await revealText(displayed, target, (text) => {
               displayed = text;
-              getState().setMessageStreamContent(streamingMessageId, text);
+              useAppStore.getState().setMessageStreamContent(streamingMessageId, text);
             });
           };
 
@@ -751,7 +750,7 @@ class DirectService implements IDataService {
               await showText(leftover);
               await closeBubble(leftover);
             } else if (streamingMessageId) {
-              state = getState();
+              state = useAppStore.getState();
               const current = state.entities.messages[streamingMessageId];
               if (current?.message_data.content?.trim()) {
                 await state.completeMessageStream(streamingMessageId);
@@ -761,7 +760,7 @@ class DirectService implements IDataService {
             }
             return fullContent;
           } catch (error) {
-            if (streamingMessageId) getState().cancelMessageStream(streamingMessageId);
+            if (streamingMessageId) useAppStore.getState().cancelMessageStream(streamingMessageId);
             throw error;
           }
         },

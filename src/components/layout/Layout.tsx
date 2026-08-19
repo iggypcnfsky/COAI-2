@@ -1835,8 +1835,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
 
     try {
       // Get all messages for the current thread from the Zustand store
-      const { getState } = await import('../../stores');
-      const state = getState();
+      const state = useAppStore.getState();
       
       // Get message IDs for the active thread
       const messageIds = state.relationships.threadMessages[activeThreadId] || [];

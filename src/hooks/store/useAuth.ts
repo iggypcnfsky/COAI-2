@@ -1,4 +1,4 @@
-import { useAppStore } from '../../stores';
+import { useAppStore } from '../../stores/appStore';
 import { AppSession, AppUser } from '../../types/auth';
 import { COAIProfile, COAIProfileData } from '../../types';
 

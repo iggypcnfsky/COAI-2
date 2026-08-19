@@ -4,7 +4,6 @@ import { COAISynth, Thread, COAITeamSynth, COAITeamSynthReference } from '../../
 import { normalizeArray, removeEntity, addRelationship, removeRelationship, removeAllRelationships } from '../../lib/utils/normalization';
 import { httpDataService } from '../../lib/services/dataService';
 import { LoadingStateKey } from '../../types/store';
-import { directService } from '../../lib/services/directService';
 import { DEFAULT_MODEL_ID } from '@shared/models';
 
 const threadSynthFetchGen = new Map<string, number>();
@@ -13,6 +12,11 @@ function bumpThreadSynthFetch(threadId: string) {
   const next = (threadSynthFetchGen.get(threadId) || 0) + 1;
   threadSynthFetchGen.set(threadId, next);
   return next;
+}
+
+async function getDirectService() {
+  const { directService } = await import('../../lib/services/directService');
+  return directService;
 }
 
 function threadSynthId(threadSynth: any): string | null {
@@ -411,7 +415,7 @@ export const createThreadsSlice: StateCreator<
     const fetchGen = bumpThreadSynthFetch(threadId);
     try {
       // Use the directService to fetch thread synths
-      const threadSynths = await directService.getThreadSynths(threadId);
+      const threadSynths = await (await getDirectService()).getThreadSynths(threadId);
       if (threadSynthFetchGen.get(threadId) !== fetchGen) {
         return threadSynths;
       }
@@ -502,7 +506,7 @@ export const createThreadsSlice: StateCreator<
       }, false, 'threads/addSynthToThread/optimistic');
       
       // Create thread-synth relationship in database
-      await directService.addSynthToThread(threadId, synthId, reference);
+      await (await getDirectService()).addSynthToThread(threadId, synthId, reference);
       
       // Success - optimistic update was correct
     } catch (error) {
@@ -532,7 +536,7 @@ export const createThreadsSlice: StateCreator<
       }), false, 'threads/removeSynthFromThread/optimistic');
       
       // Remove thread-synth relationship from database
-      await directService.removeSynthFromThread(threadId, synthId);
+      await (await getDirectService()).removeSynthFromThread(threadId, synthId);
       
       // Success - optimistic update was correct
     } catch (error) {
@@ -553,7 +557,7 @@ export const createThreadsSlice: StateCreator<
   updateThreadSynthReference: async (threadId: string, synthId: string, reference: Partial<COAITeamSynthReference>) => {
     try {
       // Update thread-synth reference in database
-      await directService.updateThreadSynthReference(threadId, synthId, reference);
+      await (await getDirectService()).updateThreadSynthReference(threadId, synthId, reference);
       
       // Success - no need for optimistic updates since this is just metadata
     } catch (error) {
