@@ -95,9 +95,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, className 
           // Handle mentions in paragraph text
           if (typeof children === 'string') {
             const parsedContent = renderMentions(children, employees);
-            return <p className="mb-3 last:mb-0 leading-relaxed text-neutral-800 dark:text-neutral-200">{parsedContent}</p>;
+            return <p className="mb-0 leading-snug text-neutral-800 dark:text-neutral-200">{parsedContent}</p>;
           }
-          return <p className="mb-3 last:mb-0 leading-relaxed text-neutral-800 dark:text-neutral-200">{children}</p>;
+          return <p className="mb-0 leading-snug text-neutral-800 dark:text-neutral-200">{children}</p>;
         },
         
         // Lists

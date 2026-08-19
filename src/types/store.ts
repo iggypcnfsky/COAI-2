@@ -161,6 +161,7 @@ export interface RootState {
   deleteMessage: (id: string) => Promise<void>;
   startMessageStream: (threadId: string, initialContent: string, aiEmployee?: COAIMessageData['aiEmployee']) => Promise<string>;
   appendToMessageStream: (messageId: string, content: string) => void;
+  setMessageStreamContent: (messageId: string, content: string) => void;
   completeMessageStream: (messageId: string) => Promise<void>;
   cancelMessageStream: (messageId: string) => void;
 

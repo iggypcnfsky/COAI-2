@@ -7,6 +7,7 @@ import {
   pickSpeakers,
   type ThreadParticipant,
 } from './turnPlanner';
+import { splitChatBubbles } from './bubbles';
 import { buildMessagesForSpeaker, groupSystemPrompt, type ChatTurn, type LlmChatMessage } from './transcript';
 import {
   createReinjectedPrompt,
@@ -136,11 +137,14 @@ export async function planAndRunTurns(opts: {
 
     try {
       const content = await speak(participant, llmMessages, systemPrompt);
-      turns.push({
-        speakerId: participant.synthId,
-        speakerName: participant.name,
-        content,
-      });
+      const bubbles = splitChatBubbles(content);
+      for (const bubble of bubbles.length > 0 ? bubbles : [content]) {
+        turns.push({
+          speakerId: participant.synthId,
+          speakerName: participant.name,
+          content: bubble,
+        });
+      }
 
       if (generations >= MAX_SPEAKERS_PER_TURN) break;
       const addressed = findAddressedTeammate(content, participants, alreadySpoke, participant.synthId);

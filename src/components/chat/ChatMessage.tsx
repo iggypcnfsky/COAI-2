@@ -19,6 +19,8 @@ interface ChatMessageProps {
   onRemoveMessage?: (messageId: string) => void;
   onUpdateSynthModel?: (synthId: string, newModel: string) => void;
   teamMembers?: TeamMember[];
+  isContinuation?: boolean;
+  hasFollowUp?: boolean;
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({ 
@@ -27,7 +29,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   employees = [], 
   onRemoveMessage,
   onUpdateSynthModel,
-  teamMembers = []
+  teamMembers = [],
+  isContinuation = false,
+  hasFollowUp = false,
 }) => {
   const isUserMessage = message.sender === 'user';
   const formattedTime = format(message.timestamp, 'h:mm a');
@@ -129,21 +133,24 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
 
   return (
     <div 
-      className={`mb-7 flex ${isUserMessage ? 'justify-end' : 'justify-start'} ${
-        isDemo ? 'opacity-50' : ''
-      } group`}
+      className={`flex ${isUserMessage ? 'justify-end' : 'justify-start'} ${
+        hasFollowUp ? 'mb-1' : 'mb-5'
+      } ${isDemo ? 'opacity-50' : ''} group`}
     >
-      <div className={`flex items-start gap-2 max-w-[65ch] max-w-[40%] ${isUserMessage ? 'flex-row-reverse' : ''}`}>
+      <div className={`flex ${
+        isUserMessage
+          ? 'max-w-[min(34rem,78%)] flex-row-reverse items-end gap-2'
+          : 'flex-col items-start gap-1.5'
+      }`}>
         {isUserMessage && (
           <PersonAvatar
             name={userName}
             src={userAvatar}
-            className="h-7 w-7 mt-1 shrink-0"
+            className="h-7 w-7 mb-0.5 shrink-0"
           />
         )}
-      <div className="min-w-0">
-        {!isUserMessage && message.aiEmployee && (
-          <div className="flex items-center mb-1.5">
+        {!isUserMessage && message.aiEmployee && !isContinuation && (
+          <div className="flex items-center">
             <PersonAvatar
               name={synthName}
               src={synthAvatar}
@@ -195,12 +202,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             </div>
           </div>
         )}
-        
+        <div className={`flex min-w-0 flex-col ${
+          isUserMessage ? 'max-w-full items-end' : 'max-w-[min(42ch,100%)] items-start'
+        }`}>
         <div 
-          className={`relative px-3 py-2 shadow-none ${
+          className={`relative w-max max-w-full px-3 py-2 shadow-none ${
             isUserMessage
               ? 'rounded-3xl rounded-tr-none bg-neutral-200 dark:bg-neutral-700 text-black dark:text-white'
-              : 'rounded-3xl rounded-tl-none text-neutral-900 dark:text-neutral-100'
+              : `${isContinuation ? 'rounded-3xl' : 'rounded-3xl rounded-tl-none'} text-neutral-900 dark:text-neutral-100`
           }`}
           style={
             !isUserMessage && customChatColor
@@ -246,14 +255,21 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               <p className="text-xs mt-1 opacity-75">{message.image.name}</p>
             </div>
           )}
-          <div className={isUserMessage ? "text-base" : ""}>{renderMessageContent()}</div>
-          <p className={`text-xs mt-1 ${
+          <div className={isUserMessage ? 'text-base' : ''}>
+            {renderMessageContent()}
+            {isContinuation && message.isLoading && (
+              <Loader2 className="ml-2 inline h-3.5 w-3.5 animate-spin text-blue-500" />
+            )}
+          </div>
+        </div>
+        {!hasFollowUp && (
+          <p className={`mt-1 px-1 text-xs ${
             isUserMessage ? 'text-neutral-600 dark:text-neutral-400' : 'text-neutral-500 dark:text-neutral-400'
           }`}>
             {formattedTime}
           </p>
+        )}
         </div>
-      </div>
       </div>
     </div>
   );

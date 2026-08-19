@@ -6,12 +6,57 @@ import YourChatsSection from './YourChatsSection';
 import ChatMessage from './ChatMessage';
 import MessageInputWithMentions from './MessageInputWithMentions';
 import ThinkingSpinner from './ThinkingSpinner';
-import { Loader2 } from 'lucide-react';
+import { Image as ImageIcon, Loader2 } from 'lucide-react';
 import { useMessages } from '@/hooks/store/useMessages';
 
 import { COAIMessage } from '@/types';
 import { useAppStore } from '@/stores/appStore';
 import { isContinuePrompt } from '@/lib/chat/turnPlanner';
+
+const MAX_CHAT_IMAGE_BYTES = 8 * 1024 * 1024;
+
+function transferHasImageFiles(dataTransfer: DataTransfer) {
+  const fileItems = Array.from(dataTransfer.items).filter((item) => item.kind === 'file');
+  if (fileItems.length > 0) {
+    return fileItems.some((item) => !item.type || item.type.startsWith('image/'));
+  }
+  return Array.from(dataTransfer.types).includes('Files');
+}
+
+function transferHasJson(dataTransfer: DataTransfer) {
+  return Array.from(dataTransfer.types).includes('application/json');
+}
+
+function isImageFile(file: File) {
+  if (file.type.startsWith('image/')) {
+    return true;
+  }
+  return /\.(png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i.test(file.name);
+}
+
+function firstImageFile(dataTransfer: DataTransfer) {
+  return Array.from(dataTransfer.files).find(isImageFile) ?? null;
+}
+
+function attachDroppedImage(file: File, setAttachedImage: (image: unknown) => void) {
+  if (!isImageFile(file) || file.size > MAX_CHAT_IMAGE_BYTES) {
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const base64 = event.target?.result as string;
+    setAttachedImage({
+      url: base64,
+      base64: base64.split(',')[1],
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      file,
+    });
+  };
+  reader.readAsDataURL(file);
+}
 
 // Normalize messages to ensure they follow the same structure - moved outside component to prevent recreation
 const normalizeMessage = (msg: ChatMessageType | COAIMessage): ChatMessageType => {
@@ -79,9 +124,13 @@ const ChatSection: React.FC<ChatSectionProps> = ({
   globalSpacebarCount = 0
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [isDragOver, setIsDragOver] = React.useState(false);
+  const dragDepthRef = useRef(0);
+  const [isTeamDragOver, setIsTeamDragOver] = React.useState(false);
+  const [isFileDragOver, setIsFileDragOver] = React.useState(false);
   const [incomingMessageCount, setIncomingMessageCount] = React.useState(0);
   const [lastMessageCount, setLastMessageCount] = React.useState(0);
+  const setAttachedImage = useAppStore((state) => state.setMessageInputAttachedImage);
+  const setInputDragOver = useAppStore((state) => state.setMessageInputIsDragOver);
 
 
   const { 
@@ -276,42 +325,82 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     }
   }, [activeThreadMessages]);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    setIsDragOver(true);
+  const resetDragState = useCallback(() => {
+    dragDepthRef.current = 0;
+    setIsTeamDragOver(false);
+    setIsFileDragOver(false);
+    setInputDragOver(false);
+  }, [setInputDragOver]);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    dragDepthRef.current += 1;
+
+    if (transferHasImageFiles(e.dataTransfer)) {
+      e.preventDefault();
+      setIsFileDragOver(true);
+      setIsTeamDragOver(false);
+      return;
+    }
+
+    if (transferHasJson(e.dataTransfer)) {
+      e.preventDefault();
+      setIsTeamDragOver(true);
+    }
   }, []);
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const currentTarget = e.currentTarget as HTMLElement;
-    const relatedTarget = e.relatedTarget as HTMLElement;
-    
-    if (!currentTarget.contains(relatedTarget)) {
-      setIsDragOver(false);
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (transferHasImageFiles(e.dataTransfer)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsFileDragOver(true);
+      setIsTeamDragOver(false);
+      return;
+    }
+
+    if (transferHasJson(e.dataTransfer)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsTeamDragOver(true);
+      setIsFileDragOver(false);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsTeamDragOver(false);
+      setIsFileDragOver(false);
     }
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
-    setIsDragOver(false);
-    
-    console.log('🚨 [CHAT SECTION DROP DEBUG] === CHAT SECTION DROP EVENT ===');
-    console.log('🚨 [CHAT SECTION DROP DEBUG] Drop event in ChatSection:', e);
-    console.log('🚨 [CHAT SECTION DROP DEBUG] DataTransfer types:', Array.from(e.dataTransfer.types));
-    
+    resetDragState();
+
+    const imageFile = firstImageFile(e.dataTransfer);
+    if (imageFile) {
+      e.preventDefault();
+      attachDroppedImage(imageFile, setAttachedImage);
+      return;
+    }
+
+    if (!transferHasJson(e.dataTransfer)) {
+      return;
+    }
+
     try {
       const dragData = e.dataTransfer.getData('application/json');
-      console.log('🚨 [CHAT SECTION DROP DEBUG] Drag data:', dragData);
+      if (!dragData) {
+        return;
+      }
+
       const parsedData = JSON.parse(dragData);
-      console.log('🚨 [CHAT SECTION DROP DEBUG] Parsed data:', parsedData);
 
       if (parsedData.type === 'document') {
         return;
       }
 
-      // Only prevent default for non-document drops
       e.preventDefault();
-      
+
       if ((parsedData.type === 'team' || parsedData.type === 'custom-team') && parsedData.employees) {
         if (onAddTeam) {
           onAddTeam(parsedData.employees);
@@ -325,9 +414,9 @@ const ChatSection: React.FC<ChatSectionProps> = ({
       }
     } catch (error) {
       console.error('Error parsing dropped data:', error);
-      e.preventDefault(); // Prevent default on error
+      e.preventDefault();
     }
-  }, [onAddTeam, onAddTeamMember, teamMembers]);
+  }, [onAddTeam, onAddTeamMember, resetDragState, setAttachedImage, teamMembers]);
 
   // Memoize the filtered and normalized messages to prevent recreation on each render
   const displayMessages = useMemo(() => {
@@ -341,14 +430,16 @@ const ChatSection: React.FC<ChatSectionProps> = ({
   return (
     <div 
       className={`flex flex-col h-full bg-white dark:bg-neutral-900 transition-all duration-200 relative ${
-        isDragOver ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+        isTeamDragOver || isFileDragOver ? 'bg-blue-50 dark:bg-blue-900/20' : ''
       }`}
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
+      onDropCapture={resetDragState}
       onDrop={handleDrop}
     >
-      {isDragOver && (
-        <div className="absolute inset-0 bg-blue-100/80 dark:bg-blue-900/30 border-4 border-blue-400 dark:border-blue-500 border-dashed z-40 pointer-events-none">
+      {(isTeamDragOver || isFileDragOver) && (
+        <div className="absolute inset-0 bg-blue-100/80 dark:bg-blue-900/30 border-4 border-blue-400 dark:border-blue-500 border-dashed z-[60] pointer-events-none">
           <div className="absolute inset-4 bg-blue-200/50 dark:bg-blue-800/30 border-2 border-blue-300 dark:border-blue-600 border-dashed rounded-lg"></div>
         </div>
       )}
@@ -375,17 +466,31 @@ const ChatSection: React.FC<ChatSectionProps> = ({
         <ScrollArea 
           className="flex-grow px-4 pb-20 md:pb-4"
         >
-          {isDragOver && (
-            <div className="absolute inset-0 pointer-events-none z-50 flex items-center justify-center">
+          {(isTeamDragOver || isFileDragOver) && (
+            <div className="absolute inset-0 pointer-events-none z-[70] flex items-center justify-center">
               <div className="bg-white dark:bg-neutral-800 border-4 border-blue-500 dark:border-blue-400 border-dashed rounded-xl p-8 shadow-2xl transform scale-110 animate-pulse">
                 <div className="text-center">
-                  <div className="text-6xl mb-4 animate-bounce">👥</div>
-                  <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-2">
-                    Drop to add to team!
-                  </h3>
-                  <p className="text-lg text-blue-600 dark:text-blue-400 font-medium">
-                    Release to add to your current team
-                  </p>
+                  {isFileDragOver ? (
+                    <>
+                      <ImageIcon className="mx-auto mb-4 h-16 w-16 text-blue-600 dark:text-blue-400" />
+                      <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-2">
+                        Drop image to add to chat
+                      </h3>
+                      <p className="text-lg text-blue-600 dark:text-blue-400 font-medium">
+                        Release to attach the image to your message
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-6xl mb-4 animate-bounce">👥</div>
+                      <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-2">
+                        Drop to add to team!
+                      </h3>
+                      <p className="text-lg text-blue-600 dark:text-blue-400 font-medium">
+                        Release to add to your current team
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -426,7 +531,22 @@ const ChatSection: React.FC<ChatSectionProps> = ({
             </div>
           ) : (
             <div>
-              {displayMessages.map((message) => (
+              {displayMessages.map((message, index) => {
+                const previous = displayMessages[index - 1];
+                const next = displayMessages[index + 1];
+                const isContinuation = Boolean(
+                  message.sender === 'ai' &&
+                  previous?.sender === 'ai' &&
+                  message.aiEmployee?.id &&
+                  previous.aiEmployee?.id === message.aiEmployee.id
+                );
+                const hasFollowUp = Boolean(
+                  message.sender === 'ai' &&
+                  next?.sender === 'ai' &&
+                  message.aiEmployee?.id &&
+                  next.aiEmployee?.id === message.aiEmployee.id
+                );
+                return (
                 <ChatMessage 
                   key={message.id} 
                   message={message} 
@@ -434,8 +554,11 @@ const ChatSection: React.FC<ChatSectionProps> = ({
                   onRemoveMessage={handleRemoveMessage}
                   onUpdateSynthModel={onUpdateSynthModel}
                   teamMembers={teamMembers}
+                  isContinuation={isContinuation}
+                  hasFollowUp={hasFollowUp}
                 />
-              ))}
+                );
+              })}
               {isWaitingForStream && (
                 <div className="flex justify-center mb-4">
                   <ThinkingSpinner size={24} />

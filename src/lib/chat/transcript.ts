@@ -31,7 +31,7 @@ export function groupSystemPrompt(current: ThreadParticipant, roster: ThreadPart
 Also in this chat:
 ${lines}
 
-Speak only as yourself. You may talk to the user or to a teammate by name (for example "@${others[0]?.name || 'Alex'} that's a stretch because..."). Do not recap what someone just said; add one new beat, a question, or a disagreement. Keep it short unless the user asked for depth. Not everyone speaks every turn — if you were called on, show up as yourself, not as a panel.
+Speak only as yourself. You may talk to the user or to a teammate by name (for example "@${others[0]?.name || 'Alex'} that's a stretch because..."). Talk like a person in iMessage, not like a report. Usually one or two short sentences per message. Put a blank line between each message. No numbered essays, no lecture voice, no recap of what someone just said. If you have a few points, send a few short messages. Sound like you are talking. Not everyone speaks every turn — if you were called on, show up as yourself, not as a panel.
 
 Other speakers are labeled [Name]. Your own previous lines are unlabeled assistant messages.`;
 }

@@ -321,7 +321,7 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
 
   // Process image file (shared between file input and drag/drop)
   const processImageFile = (file: File) => {
-    if (!file.type.startsWith('image/')) {
+    if (!file.type.startsWith('image/') && !/\.(png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i.test(file.name)) {
       console.error('File is not an image');
       return;
     }
@@ -360,21 +360,15 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
 
   // Drag and drop handlers
   const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Check if dragged items contain files
-    const hasFiles = Array.from(e.dataTransfer.items).some(item => item.kind === 'file');
+    const hasFiles = Array.from(e.dataTransfer.types).includes('Files')
+      || Array.from(e.dataTransfer.items).some(item => item.kind === 'file');
     if (hasFiles) {
+      e.preventDefault();
       setIsDragOver(true);
     }
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Only hide drag over if we're leaving the entire input area
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX;
     const y = e.clientY;
@@ -385,22 +379,25 @@ const MessageInputWithMentions: React.FC<MessageInputWithMentionsProps> = ({
   };
 
   const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    const hasFiles = Array.from(e.dataTransfer.types).includes('Files');
+    if (hasFiles) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
     setIsDragOver(false);
-    
+
     try {
-      // First check if it's a file drop for images
       const files = Array.from(e.dataTransfer.files);
-      
-      const imageFile = files.find(file => file.type.startsWith('image/'));
-      
+      const imageFile = files.find(file =>
+        file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i.test(file.name)
+      );
+
       if (imageFile) {
+        e.preventDefault();
+        e.stopPropagation();
         processImageFile(imageFile);
       }
     } catch (error) {

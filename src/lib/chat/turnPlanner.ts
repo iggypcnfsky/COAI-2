@@ -46,10 +46,9 @@ function shuffle<T>(items: T[]): T[] {
 
 export function speakerSubsetSize(count: number, isContinue: boolean) {
   if (count <= 0) return 0;
-  if (count === 1) return 1;
   if (isContinue) return 1;
-  if (count === 2) return 1;
-  if (count === 3) return Math.random() < 0.55 ? 1 : 2;
+  if (count <= 2) return count;
+  if (count === 3) return Math.random() < 0.55 ? 2 : 3;
   return 2;
 }
 

@@ -19,6 +19,7 @@ export interface MessagesState {
   // Streaming message support
   startMessageStream: (threadId: string, initialContent: string, aiEmployee?: COAIMessageData['aiEmployee']) => Promise<string>;
   appendToMessageStream: (messageId: string, content: string) => void;
+  setMessageStreamContent: (messageId: string, content: string) => void;
   completeMessageStream: (messageId: string) => Promise<void>;
   cancelMessageStream: (messageId: string) => void;
   
@@ -535,6 +536,30 @@ export const createMessagesSlice: StateCreator<
         }
       }
     }), false, 'messages/appendToMessageStream');
+  },
+
+  setMessageStreamContent: (messageId: string, content: string) => {
+    const currentMessage = get().entities.messages[messageId];
+    if (!currentMessage) {
+      console.error(`Cannot update non-existent message ${messageId}`);
+      return;
+    }
+
+    set((state) => ({
+      entities: {
+        ...state.entities,
+        messages: {
+          ...state.entities.messages,
+          [messageId]: {
+            ...currentMessage,
+            message_data: {
+              ...currentMessage.message_data,
+              content,
+            },
+          },
+        },
+      },
+    }), false, 'messages/setMessageStreamContent');
   },
   
   completeMessageStream: async (messageId: string) => {

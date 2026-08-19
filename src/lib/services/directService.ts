@@ -29,6 +29,7 @@ import {
 import {
   CONTINUE_PROMPT,
 } from '../chat/turnPlanner';
+import { bubbleDelayMs, MAX_CHAT_BUBBLES, revealText, splitClosedChatBubbles } from '../chat/bubbles';
 
 const memoryStore = {
   synths: new Map<string, COAISynth>(),
@@ -651,14 +652,43 @@ class DirectService implements IDataService {
         },
         speak: async (participant, messages, systemPrompt) => {
           const { getState } = await import('../../stores');
-          const state = getState();
-          const streamingMessageId = await state.startMessageStream(threadId, '', {
+          const employee = {
             id: participant.synthId,
             name: participant.name,
             role: participant.role,
             profileImage: participant.profileImage || '/default-avatar.png',
             model: participant.model || DEFAULT_MODEL_ID,
-          });
+          };
+          const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          let state = getState();
+          let streamingMessageId = await state.startMessageStream(threadId, '', employee);
+          let openBuffer = '';
+          let fullContent = '';
+          let displayed = '';
+          let bubblesEmitted = 0;
+
+          const closeBubble = async (text: string) => {
+            state = getState();
+            state.setMessageStreamContent(streamingMessageId, text);
+            await state.completeMessageStream(streamingMessageId);
+            streamingMessageId = '';
+            displayed = '';
+            bubblesEmitted += 1;
+          };
+
+          const showText = async (target: string) => {
+            state = getState();
+            if (!streamingMessageId) {
+              streamingMessageId = await state.startMessageStream(threadId, '', employee);
+              displayed = '';
+              state = getState();
+            }
+            await revealText(displayed, target, (text) => {
+              displayed = text;
+              getState().setMessageStreamContent(streamingMessageId, text);
+            });
+          };
 
           try {
             const response = await apiStream('/chat', {
@@ -671,7 +701,6 @@ class DirectService implements IDataService {
 
             const reader = response.body?.getReader();
             const decoder = new TextDecoder();
-            let fullContent = '';
             if (reader) {
               try {
                 while (true) {
@@ -682,15 +711,33 @@ class DirectService implements IDataService {
                     if (!line.startsWith('data: ')) continue;
                     const data = line.slice(5).trim();
                     if (!data || data === '[DONE]' || data === 'DONE') continue;
+                    let content: string | undefined;
                     try {
                       const parsed = JSON.parse(data);
-                      const content = parsed.choices?.[0]?.delta?.content || parsed.content;
-                      if (content) {
-                        fullContent += content;
-                        state.appendToMessageStream(streamingMessageId, content);
-                      }
+                      content = parsed.choices?.[0]?.delta?.content || parsed.content;
                     } catch {
-                      // ignore malformed SSE chunks
+                      continue;
+                    }
+                    if (!content) continue;
+
+                    fullContent += content;
+                    openBuffer += content;
+                    const { closed, rest } = splitClosedChatBubbles(openBuffer);
+                    openBuffer = rest;
+                    const canClose = Math.max(0, MAX_CHAT_BUBBLES - 1 - bubblesEmitted);
+                    const toClose = closed.slice(0, canClose);
+                    if (closed.length > canClose) {
+                      openBuffer = [...closed.slice(canClose), rest].filter(Boolean).join('\n\n');
+                    }
+
+                    for (const bubble of toClose) {
+                      await showText(bubble);
+                      await closeBubble(bubble);
+                      await sleep(bubbleDelayMs(openBuffer || bubble));
+                    }
+
+                    if (openBuffer) {
+                      await showText(openBuffer);
                     }
                   }
                 }
@@ -698,10 +745,23 @@ class DirectService implements IDataService {
                 reader.releaseLock();
               }
             }
-            await state.completeMessageStream(streamingMessageId);
+
+            const leftover = openBuffer.trim();
+            if (leftover) {
+              await showText(leftover);
+              await closeBubble(leftover);
+            } else if (streamingMessageId) {
+              state = getState();
+              const current = state.entities.messages[streamingMessageId];
+              if (current?.message_data.content?.trim()) {
+                await state.completeMessageStream(streamingMessageId);
+              } else {
+                state.cancelMessageStream(streamingMessageId);
+              }
+            }
             return fullContent;
           } catch (error) {
-            state.cancelMessageStream(streamingMessageId);
+            if (streamingMessageId) getState().cancelMessageStream(streamingMessageId);
             throw error;
           }
         },
