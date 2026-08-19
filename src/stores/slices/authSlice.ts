@@ -1,782 +1,183 @@
-import { AuthError, Session, User } from '@supabase/supabase-js';
 import { StateCreator } from 'zustand';
 import { RootState } from '../../types/store';
-import { supabase } from '../../lib/supabase';
 import { COAIProfile, COAIProfileData } from '../../types';
+import { AppSession, AppUser } from '../../types/auth';
 import { upsertEntity } from '../../lib/utils/normalization';
-import { LoadingStateKey } from '../../types/store';
+import { apiFetch } from '../../lib/api/client';
 
-// Define the auth slice interface
 export interface AuthSlice {
-  // State
-  session: Session | null;
-  user: User | null;
+  session: AppSession | null;
+  user: AppUser | null;
   profile: COAIProfile | null;
   isAuthenticated: boolean;
+  subscriptionStatus: string;
+  onboardedAt: string | null;
+  hasByok: boolean;
   tempApiKeys: {
-    openai?: string;
-    anthropic?: string;
-    perplexity?: string;
-    googleai?: string;
+    openrouter?: string;
     [key: string]: string | undefined;
   };
-  
-  // Actions
-  setSession: (session: Session | null) => void;
-  setUser: (user: User | null) => void;
+  setSession: (session: AppSession | null) => void;
+  setUser: (user: AppUser | null) => void;
   setProfile: (profile: COAIProfile | null) => void;
+  setSubscription: (status: string, onboardedAt?: string | null, hasByok?: boolean) => void;
   setTempApiKey: (provider: string, key: string) => void;
   removeTempApiKey: (provider: string) => void;
   clearTempApiKeys: () => void;
-  
-  // API Key persistence methods
   saveApiKey: (provider: string, key: string) => Promise<{ error: Error | null }>;
   removeApiKey: (provider: string) => Promise<{ error: Error | null }>;
   getApiKey: (provider: string) => string | undefined;
-  
-  // Auth operations
-  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-  signInWithGoogle: () => Promise<{ error: AuthError | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-  signOut: () => Promise<{ error: AuthError | null }>;
+  signIn: (_email?: string, _password?: string) => Promise<{ error: Error | null }>;
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
+  signUp: (_email?: string, _password?: string) => Promise<{ error: Error | null }>;
+  signOut: () => Promise<{ error: Error | null }>;
   updateProfile: (profileData: Partial<COAIProfileData>) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
   refreshProfileFromUser: () => Promise<void>;
-  
-  // Internal methods
   _loadProfile: (userId: string) => Promise<void>;
   _createProfile: (userId: string) => Promise<void>;
 }
 
-// Create the auth slice
 export const createAuthSlice: StateCreator<
   RootState,
-  [["zustand/devtools", never], ["zustand/persist", unknown]],
+  [['zustand/devtools', never], ['zustand/persist', unknown]],
   [],
   AuthSlice
 > = (set, get) => ({
-  // State
   session: null,
   user: null,
   profile: null,
   isAuthenticated: false,
+  subscriptionStatus: 'none',
+  onboardedAt: null,
+  hasByok: false,
   tempApiKeys: {},
-  
-  // Actions
+
   setSession: (session) => {
-    set(() => ({
-      session,
-      isAuthenticated: !!session,
-    }), false, 'auth/setSession');
+    set(() => ({ session, isAuthenticated: !!session }), false, 'auth/setSession');
   },
-  
   setUser: (user) => {
-    set(() => ({
-      user,
-    }), false, 'auth/setUser');
+    set(() => ({ user }), false, 'auth/setUser');
   },
-  
   setProfile: (profile) => {
     set((state) => ({
       profile,
-      
-      // Also update the profiles entity if we have a profile
-      ...(profile ? {
-        entities: {
-          ...state.entities,
-          profiles: upsertEntity(state.entities.profiles, profile),
-        },
-      } : {}),
+      ...(profile
+        ? {
+            entities: {
+              ...state.entities,
+              profiles: upsertEntity(state.entities.profiles, profile),
+            },
+          }
+        : {}),
     }), false, 'auth/setProfile');
   },
-  
-  setTempApiKey: (provider, key) => {
-    set((state) => ({
-      tempApiKeys: {
-        ...state.tempApiKeys,
-        [provider]: key,
-      },
-    }), false, 'auth/setTempApiKey');
+  setSubscription: (status, onboardedAt, hasByok) => {
+    set(() => ({
+      subscriptionStatus: status,
+      onboardedAt: onboardedAt ?? get().onboardedAt,
+      hasByok: hasByok ?? get().hasByok,
+    }), false, 'auth/setSubscription');
   },
-  
+  setTempApiKey: (provider, key) => {
+    set((state) => ({ tempApiKeys: { ...state.tempApiKeys, [provider]: key } }), false, 'auth/setTempApiKey');
+  },
   removeTempApiKey: (provider) => {
     set((state) => {
-      const newTempApiKeys = { ...state.tempApiKeys };
-      delete newTempApiKeys[provider];
-      
-      return {
-        tempApiKeys: newTempApiKeys,
-      };
+      const next = { ...state.tempApiKeys };
+      delete next[provider];
+      return { tempApiKeys: next };
     }, false, 'auth/removeTempApiKey');
   },
-  
-  clearTempApiKeys: () => {
-    set(() => ({
-      tempApiKeys: {},
-    }), false, 'auth/clearTempApiKeys');
-  },
-  
-  // API Key persistence methods
+  clearTempApiKeys: () => set(() => ({ tempApiKeys: {} }), false, 'auth/clearTempApiKeys'),
+
   saveApiKey: async (provider, key) => {
     try {
-      const profile = get().profile;
-      
-      if (!profile) {
-        return { error: new Error('No profile found') };
+      if (provider === 'openrouter') {
+        await apiFetch('/me/openrouter-key', { method: 'PUT', body: JSON.stringify({ key }) });
+        get().setSubscription(get().subscriptionStatus, get().onboardedAt, true);
       }
-      
-      const updatedProfileData = {
-        ...profile.profile_data,
-        apiKeys: {
-          ...profile.profile_data.apiKeys,
-          [provider]: key,
-        },
-      };
-      
-      const { data, error } = await supabase
-        .from('coai-profiles')
-        .update({
-          profile_data: updatedProfileData,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', profile.id)
-        .select()
-        .single();
-      
-      if (error) {
-        return { error };
-      }
-      
-      get().setProfile(data);
-      
+      get().setTempApiKey(provider, key);
       return { error: null };
     } catch (error) {
       return { error: error as Error };
     }
   },
-  
   removeApiKey: async (provider) => {
     try {
-      const profile = get().profile;
-      
-      if (!profile) {
-        return { error: new Error('No profile found') };
+      if (provider === 'openrouter') {
+        await apiFetch('/me/openrouter-key', { method: 'PUT', body: JSON.stringify({ key: null }) });
+        get().setSubscription(get().subscriptionStatus, get().onboardedAt, false);
       }
-      
-      const updatedApiKeys = { ...profile.profile_data.apiKeys };
-      delete updatedApiKeys[provider];
-      
-      const updatedProfileData = {
-        ...profile.profile_data,
-        apiKeys: updatedApiKeys,
-      };
-      
-      const { data, error } = await supabase
-        .from('coai-profiles')
-        .update({
-          profile_data: updatedProfileData,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', profile.id)
-        .select()
-        .single();
-      
-      if (error) {
-        return { error };
-      }
-      
-      get().setProfile(data);
-      
+      get().removeTempApiKey(provider);
       return { error: null };
     } catch (error) {
       return { error: error as Error };
     }
   },
-  
-  getApiKey: (provider) => {
-    const profile = get().profile;
-    return profile?.profile_data?.apiKeys?.[provider];
+  getApiKey: (provider) => get().tempApiKeys[provider],
+
+  signIn: async () => {
+    window.location.assign('/sign-in');
+    return { error: null };
   },
-  
-  // Auth operations
-  signIn: async (email, password) => {
-    set((state) => ({
-      ui: {
-        ...state.ui,
-        loadingStates: {
-          ...state.ui.loadingStates,
-          [LoadingStateKey.AUTH_SIGNIN]: true,
-        },
-        errors: {
-          ...state.ui.errors,
-          [LoadingStateKey.AUTH_SIGNIN]: null,
-        },
-      },
-    }), false, 'auth/signIn/start');
-    
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (error) {
-        set((state) => ({
-          ui: {
-            ...state.ui,
-            loadingStates: {
-              ...state.ui.loadingStates,
-              [LoadingStateKey.AUTH_SIGNIN]: false,
-            },
-            errors: {
-              ...state.ui.errors,
-              [LoadingStateKey.AUTH_SIGNIN]: error,
-            },
-          },
-        }), false, 'auth/signIn/error');
-        
-        return { error };
-      }
-      
-      // Session and user will be set by the auth listener in initialization
-      
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          loadingStates: {
-            ...state.ui.loadingStates,
-            [LoadingStateKey.AUTH_SIGNIN]: false,
-          },
-        },
-      }), false, 'auth/signIn/success');
-      
-      return { error: null };
-    } catch (error) {
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          loadingStates: {
-            ...state.ui.loadingStates,
-            [LoadingStateKey.AUTH_SIGNIN]: false,
-          },
-          errors: {
-            ...state.ui.errors,
-            [LoadingStateKey.AUTH_SIGNIN]: error as Error,
-          },
-        },
-      }), false, 'auth/signIn/error');
-      
-      return { error: error as AuthError };
-    }
-  },
-  
   signInWithGoogle: async () => {
-    set((state) => ({
-      ui: {
-        ...state.ui,
-        loadingStates: {
-          ...state.ui.loadingStates,
-          [LoadingStateKey.AUTH_SIGNIN]: true,
-        },
-        errors: {
-          ...state.ui.errors,
-          [LoadingStateKey.AUTH_SIGNIN]: null,
-        },
-      },
-    }), false, 'auth/signInWithGoogle/start');
-    
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/`,
-        },
-      });
-      
-      if (error) {
-        set((state) => ({
-          ui: {
-            ...state.ui,
-            loadingStates: {
-              ...state.ui.loadingStates,
-              [LoadingStateKey.AUTH_SIGNIN]: false,
-            },
-            errors: {
-              ...state.ui.errors,
-              [LoadingStateKey.AUTH_SIGNIN]: error,
-            },
-          },
-        }), false, 'auth/signInWithGoogle/error');
-        
-        return { error };
-      }
-      
-      // Auth state will be handled by the onAuthStateChange listener
-      
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          loadingStates: {
-            ...state.ui.loadingStates,
-            [LoadingStateKey.AUTH_SIGNIN]: false,
-          },
-        },
-      }), false, 'auth/signInWithGoogle/success');
-      
-      return { error: null };
-    } catch (error) {
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          loadingStates: {
-            ...state.ui.loadingStates,
-            [LoadingStateKey.AUTH_SIGNIN]: false,
-          },
-          errors: {
-            ...state.ui.errors,
-            [LoadingStateKey.AUTH_SIGNIN]: error as Error,
-          },
-        },
-      }), false, 'auth/signInWithGoogle/error');
-      
-      return { error: error as AuthError };
-    }
+    window.location.assign('/sign-in');
+    return { error: null };
   },
-  
-  signUp: async (email, password) => {
-    set((state) => ({
-      ui: {
-        ...state.ui,
-        loadingStates: {
-          ...state.ui.loadingStates,
-          [LoadingStateKey.AUTH_SIGNIN]: true,
-        },
-        errors: {
-          ...state.ui.errors,
-          [LoadingStateKey.AUTH_SIGNIN]: null,
-        },
-      },
-    }), false, 'auth/signUp/start');
-    
-    try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-      
-      if (error) {
-        set((state) => ({
-          ui: {
-            ...state.ui,
-            loadingStates: {
-              ...state.ui.loadingStates,
-              [LoadingStateKey.AUTH_SIGNIN]: false,
-            },
-            errors: {
-              ...state.ui.errors,
-              [LoadingStateKey.AUTH_SIGNIN]: error,
-            },
-          },
-        }), false, 'auth/signUp/error');
-        
-        return { error };
-      }
-      
-      // Profile will be created automatically when user signs in
-      
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          loadingStates: {
-            ...state.ui.loadingStates,
-            [LoadingStateKey.AUTH_SIGNIN]: false,
-          },
-        },
-      }), false, 'auth/signUp/success');
-      
-      return { error: null };
-    } catch (error) {
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          loadingStates: {
-            ...state.ui.loadingStates,
-            [LoadingStateKey.AUTH_SIGNIN]: false,
-          },
-          errors: {
-            ...state.ui.errors,
-            [LoadingStateKey.AUTH_SIGNIN]: error as Error,
-          },
-        },
-      }), false, 'auth/signUp/error');
-      
-      return { error: error as AuthError };
-    }
+  signUp: async () => {
+    window.location.assign('/sign-up');
+    return { error: null };
   },
-  
   signOut: async () => {
-    console.log('🔍 AUTH SLICE: Starting signOut process');
-    
-    set((state) => ({
-      ui: {
-        ...state.ui,
-        loadingStates: {
-          ...state.ui.loadingStates,
-          [LoadingStateKey.AUTH_SIGNOUT]: true,
-        },
-        errors: {
-          ...state.ui.errors,
-          [LoadingStateKey.AUTH_SIGNOUT]: null,
-        },
-      },
-      // Immediately reset auth state for a smoother UX
+    set(() => ({
       session: null,
       user: null,
       profile: null,
       isAuthenticated: false,
-    }), false, 'auth/signOut/start');
-    
-    try {
-      console.log('🔍 AUTH SLICE: Making supabase.auth.signOut() call');
-      
-      // Increase timeout to 10 seconds and log progress
-      const signOutPromise = new Promise(async (resolve, reject) => {
-        try {
-          console.log('🔍 AUTH SLICE: Inside signOut promise wrapper');
-          // Try to clear tokens directly first
-          try {
-            console.log('🔍 AUTH SLICE: Manually clearing tokens from storage');
-            localStorage.removeItem('supabase.auth.token');
-            sessionStorage.removeItem('supabase.auth.token');
-            console.log('🔍 AUTH SLICE: Successfully cleared tokens from storage');
-          } catch (e) {
-            console.warn('🔍 AUTH SLICE: Failed to clear session storage:', e);
-          }
-          
-          console.log('🔍 AUTH SLICE: Calling Supabase signOut API');
-          const result = await supabase.auth.signOut();
-          console.log('🔍 AUTH SLICE: Supabase signOut API call completed', result);
-          resolve(result);
-        } catch (e) {
-          console.error('🔍 AUTH SLICE: Error in signOut promise:', e);
-          reject(e);
-        }
-      });
-      
-      const timeoutPromise = new Promise((_, reject) => {
-        const id = setTimeout(() => {
-          console.warn('🔍 AUTH SLICE: Sign out operation timed out after 10 seconds');
-          reject(new Error('Sign out timeout'));
-        }, 10000); // Increased to 10 seconds
-        
-        // Ensure the timeout is cleared if the promise resolves
-        return () => clearTimeout(id);
-      });
-      
-      console.log('🔍 AUTH SLICE: Starting Promise.race');
-      // Use Promise.race to handle potential timeouts
-      const raceResult = await Promise.race([
-        signOutPromise,
-        timeoutPromise.then(() => {
-          console.warn('⚠️ AUTH SLICE: Sign out operation timed out, but we can still reset the local state');
-          return { error: null };
-        }).catch(err => {
-          console.error('🔍 AUTH SLICE: Timeout promise rejected with:', err);
-          return { error: err instanceof Error ? err : new Error(String(err)) };
-        })
-      ]);
-      
-      // Explicitly extract error with proper typing
-      const { error } = raceResult as { error: AuthError | null };
-      
-      if (error) {
-        console.error('❌ AUTH SLICE: Sign out error:', error);
-        set((state) => ({
-          ui: {
-            ...state.ui,
-            loadingStates: {
-              ...state.ui.loadingStates,
-              [LoadingStateKey.AUTH_SIGNOUT]: false,
-            },
-            errors: {
-              ...state.ui.errors,
-              [LoadingStateKey.AUTH_SIGNOUT]: error,
-            },
-          },
-        }), false, 'auth/signOut/error');
-        
-        return { error };
-      }
-      
-      // Keep temp API keys if any
-      const tempApiKeys = get().tempApiKeys;
-      
-      // Ensure auth state is fully reset
-      set((state) => ({
-        session: null,
-        user: null,
-        profile: null,
-        isAuthenticated: false,
-        // Keep temp API keys
-        tempApiKeys,
-        ui: {
-          ...state.ui,
-          loadingStates: {
-            ...state.ui.loadingStates,
-            [LoadingStateKey.AUTH_SIGNOUT]: false,
-          },
-        },
-      }), false, 'auth/signOut/success');
-      
-      console.log('✅ AUTH SLICE: Successfully signed out and reset auth state');
-      
-      // Force clear localStorage session data as a fallback
-      try {
-        localStorage.removeItem('supabase.auth.token');
-        sessionStorage.removeItem('supabase.auth.token');
-        
-        // Try to clear all supabase-related items
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.includes('supabase')) {
-            console.log('🔍 AUTH SLICE: Removing storage item:', key);
-            localStorage.removeItem(key);
-          }
-        }
-        
-        for (let i = 0; i < sessionStorage.length; i++) {
-          const key = sessionStorage.key(i);
-          if (key && key.includes('supabase')) {
-            console.log('🔍 AUTH SLICE: Removing session storage item:', key);
-            sessionStorage.removeItem(key);
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to clear session storage:', e);
-      }
-      
-      return { error: null };
-    } catch (error) {
-      console.error('❌ AUTH SLICE: Sign out exception:', error);
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          loadingStates: {
-            ...state.ui.loadingStates,
-            [LoadingStateKey.AUTH_SIGNOUT]: false,
-          },
-          errors: {
-            ...state.ui.errors,
-            [LoadingStateKey.AUTH_SIGNOUT]: error as Error,
-          },
-        },
-        // Even on error, reset auth state to ensure user is signed out locally
-        session: null,
-        user: null, 
-        profile: null,
-        isAuthenticated: false,
-      }), false, 'auth/signOut/error');
-      
-      return { error: error as AuthError };
-    }
+      subscriptionStatus: 'none',
+      onboardedAt: null,
+    }), false, 'auth/signOut');
+    return { error: null };
   },
-  
   updateProfile: async (profileData) => {
     try {
-      const profile = get().profile;
-      
-      if (!profile) {
-        return { error: new Error('No profile found') };
-      }
-      
-      const updatedProfileData = {
-        ...profile.profile_data,
-        ...profileData,
-      };
-      
-      const { data, error } = await supabase
-        .from('coai-profiles')
-        .update({
-          profile_data: updatedProfileData,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', profile.id)
-        .select()
-        .single();
-      
-      if (error) {
-        return { error };
-      }
-      
-      get().setProfile(data);
-      
+      const saved = await apiFetch<COAIProfile>('/me/profile', {
+        method: 'PUT',
+        body: JSON.stringify(profileData),
+      });
+      get().setProfile(saved);
       return { error: null };
     } catch (error) {
       return { error: error as Error };
     }
   },
-  
   refreshProfile: async () => {
-    const user = get().user;
-    
-    if (user) {
-      await get()._loadProfile(user.id);
-    }
+    await get()._loadProfile(get().user?.id || '');
   },
-  
   refreshProfileFromUser: async () => {
-    try {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      
-      if (error || !user) {
-        return;
-      }
-      
-      get().setUser(user);
-      await get()._loadProfile(user.id);
-    } catch (error) {
-      console.error('Error refreshing profile from user:', error);
-    }
+    await get().refreshProfile();
   },
-  
-  // Internal methods
-  _loadProfile: async (userId) => {
+  _loadProfile: async () => {
     try {
-      const { data, error } = await supabase
-        .from('coai-profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-      
-      if (error && error.code !== 'PGRST116') { // PGRST116 = not found
-        console.error('Error loading profile:', error);
-        return;
-      }
-      
-      if (data) {
-        get().setProfile(data);
-        
-        // Fetch user documents after profile is loaded
+      const me = await apiFetch<{
+        user: { subscriptionStatus: string; onboardedAt: string | null; hasByok: boolean };
+        profile: COAIProfile | null;
+      }>('/me');
+      if (me.profile) get().setProfile(me.profile);
+      get().setSubscription(me.user.subscriptionStatus, me.user.onboardedAt, me.user.hasByok);
+      if (me.profile) {
         try {
           await get().fetchDocuments();
-        } catch (docError) {
-          console.error('Error fetching documents:', docError);
+        } catch {
+          // documents are optional
         }
-      } else {
-        // Create profile if it doesn't exist
-        await get()._createProfile(userId);
       }
     } catch (error) {
-      console.error('Error in loadProfile:', error);
+      console.error('Error loading profile', error);
     }
   },
-  
-  _createProfile: async (userId) => {
-    try {
-      console.log('🔍 DEBUG: _createProfile called for userId:', userId);
-      
-      // Check if there's a temporary user to convert
-      const tempUserId = localStorage.getItem('tempUserId');
-      if (tempUserId) {
-        console.log('🔄 Converting temporary user to real user:', tempUserId, '->', userId);
-        
-        try {
-          // Import directService to handle the conversion
-          const { directService } = await import('../../lib/services/directService');
-          await directService.convertTempUserToRealUser(userId);
-          console.log('✅ Successfully converted temporary user data');
-        } catch (conversionError) {
-          console.error('❌ Error converting temporary user:', conversionError);
-          // Continue with profile creation even if conversion fails
-        }
-      }
-      
-      const user = get().user;
-      
-      if (!user) {
-        console.log('🔍 DEBUG: No user found, skipping profile creation');
-        return;
-      }
-      
-      const userMetadata = user.user_metadata || {};
-      const identities = user.identities || [];
-      
-      // Google OAuth provides different metadata fields
-      const googleIdentity = identities.find(identity => identity.provider === 'google');
-      const googleData = googleIdentity?.identity_data || {};
-      
-      // Try multiple sources for avatar
-      let avatar = 
-        userMetadata.avatar_url || 
-        userMetadata.picture ||
-        googleData.avatar_url ||
-        googleData.picture;
-      
-      // Fallback: If no avatar found and we have a Google provider ID, construct Google avatar URL
-      if (!avatar && (googleData.provider_id || googleData.sub)) {
-        const googleId = googleData.provider_id || googleData.sub;
-        avatar = `https://lh3.googleusercontent.com/a/${googleId}`;
-      }
-      
-      const defaultProfileData: COAIProfileData = {
-        displayName: 
-          userMetadata.full_name || 
-          userMetadata.name || 
-          googleData.full_name ||
-          googleData.name ||
-          user.email?.split('@')[0] || 
-          'User',
-        avatar,
-        preferences: {
-          theme: 'auto',
-          notifications: true,
-          defaultModel: 'gpt-4o'
-        }
-      };
-      
-      console.log('🔍 DEBUG: Attempting to insert profile for userId:', userId);
-      
-      const { data, error } = await supabase
-        .from('coai-profiles')
-        .insert({
-          user_id: userId,
-          profile_data: defaultProfileData
-        })
-        .select()
-        .single();
-      
-      if (error) {
-        console.error('🔍 DEBUG: Profile creation error:', error);
-        
-        // If profile already exists (duplicate key), try to update it instead
-        if (error.code === '23505') {
-          console.log('🔍 DEBUG: Profile already exists, attempting update instead');
-          const { data: updateData, error: updateError } = await supabase
-            .from('coai-profiles')
-            .update({
-              profile_data: defaultProfileData,
-              updated_at: new Date().toISOString()
-            })
-            .eq('user_id', userId)
-            .select()
-            .single();
-          
-          if (updateError) {
-            console.error('🔍 DEBUG: Error updating existing profile:', updateError);
-            return;
-          }
-          
-          console.log('🔍 DEBUG: Profile updated successfully after duplicate key error');
-          get().setProfile(updateData);
-        }
-        
-        return;
-      }
-      
-      console.log('🔍 DEBUG: Profile created successfully');
-      get().setProfile(data);
-    } catch (error) {
-      console.error('🔍 DEBUG: Error in createProfile:', error);
-    }
+  _createProfile: async () => {
+    await get()._loadProfile('');
   },
-}); 
+});

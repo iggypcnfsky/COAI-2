@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { RootState } from '../../types/store';
-import { supabase } from '../../lib/supabase';
+import { apiFetch } from '../../lib/api/client';
 import { COAIDocument, COAIDocumentData } from '../../types';
 import { upsertEntity, removeEntity } from '../../lib/utils/normalization';
 import { LoadingStateKey } from '../../types/store';
@@ -45,29 +45,7 @@ export const createDocumentsSlice: StateCreator<
         return { error: new Error('User not authenticated') };
       }
       
-      const { data, error } = await supabase
-        .from('coai-documents')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false });
-      
-      if (error) {
-        set((state) => ({
-          ...state,
-          ui: {
-            ...state.ui,
-            loadingStates: {
-              ...state.ui.loadingStates,
-              [LoadingStateKey.FETCH_DOCUMENTS]: false,
-            },
-            errors: {
-              ...state.ui.errors,
-              [LoadingStateKey.FETCH_DOCUMENTS]: error,
-            },
-          },
-        }), false, 'documents/fetchDocuments/error');
-        return { error };
-      }
+      const data = await apiFetch<COAIDocument[]>('/documents');
       
       // Update entities with documents
       const documentsMap = (data || []).reduce((acc, doc) => {
@@ -132,32 +110,10 @@ export const createDocumentsSlice: StateCreator<
         return { data: null, error: new Error('User not authenticated') };
       }
       
-      const { data, error } = await supabase
-        .from('coai-documents')
-        .insert({
-          user_id: user.id,
-          document_data: documentData,
-        })
-        .select()
-        .single();
-      
-      if (error) {
-        set((state) => ({
-          ...state,
-          ui: {
-            ...state.ui,
-            loadingStates: {
-              ...state.ui.loadingStates,
-              [LoadingStateKey.CREATE_DOCUMENT]: false,
-            },
-            errors: {
-              ...state.ui.errors,
-              [LoadingStateKey.CREATE_DOCUMENT]: error,
-            },
-          },
-        }), false, 'documents/createDocument/error');
-        return { data: null, error };
-      }
+      const data = await apiFetch<COAIDocument>('/documents', {
+        method: 'POST',
+        body: JSON.stringify({ document_data: documentData }),
+      });
       
       // Add document to entities
       set((state) => ({
@@ -229,34 +185,10 @@ export const createDocumentsSlice: StateCreator<
         ...updates,
       };
       
-      const { data, error } = await supabase
-        .from('coai-documents')
-        .update({
-          document_data: updatedDocumentData,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', documentId)
-        .eq('user_id', user.id)
-        .select()
-        .single();
-      
-      if (error) {
-        set((state) => ({
-          ...state,
-          ui: {
-            ...state.ui,
-            loadingStates: {
-              ...state.ui.loadingStates,
-              [LoadingStateKey.SAVE_DOCUMENT]: false,
-            },
-            errors: {
-              ...state.ui.errors,
-              [LoadingStateKey.SAVE_DOCUMENT]: error,
-            },
-          },
-        }), false, 'documents/updateDocument/error');
-        return { error };
-      }
+      const data = await apiFetch<COAIDocument>(`/documents/${documentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ document_data: updatedDocumentData }),
+      });
       
       // Update document in entities
       set((state) => ({
@@ -301,15 +233,7 @@ export const createDocumentsSlice: StateCreator<
         return { error: new Error('User not authenticated') };
       }
       
-      const { error } = await supabase
-        .from('coai-documents')
-        .delete()
-        .eq('id', documentId)
-        .eq('user_id', user.id);
-      
-      if (error) {
-        return { error };
-      }
+      await apiFetch(`/documents/${documentId}`, { method: 'DELETE' });
       
       // Remove document from entities
       set((state) => ({

@@ -5,20 +5,13 @@
  * to select the appropriate service based on authentication status.
  */
 
-import { DataService } from './dataService';
+import { IDataService } from './dataService';
 import { directService } from './directService';
 
 
 import { useAppStore } from '../../stores/appStore';
 
-/**
- * Get the appropriate data service based on authentication status
- * 
- * @returns The data service to use
- */
-export function getDataService(): DataService {
-  // For now, we just use the direct service for unauthenticated users
-  // In the future, we could have a separate service for authenticated users
+export function getDataService(): IDataService {
   return directService;
 }
 
@@ -46,7 +39,7 @@ export async function initializeAppData() {
 // Export all services
 export { cacheService } from './cacheService';
 export { directService } from './directService';
-export type { DataService } from './dataService';
+export type { IDataService, DataService } from './dataService';
 
 // Default export the helper function
 export default getDataService; 

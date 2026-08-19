@@ -2,9 +2,8 @@ import { StateCreator } from 'zustand';
 import { RootState } from '../../types/store';
 import { COAISynth, COAISynthData } from '../../types';
 import { normalizeArray, removeEntity } from '../../lib/utils/normalization';
-import { supabase } from '../../lib/supabase';
+import { DataService, httpDataService } from '../../lib/services/dataService';
 import { LoadingStateKey } from '../../types/store';
-import { DataService } from '../../lib/services/dataService';
 
 export interface SynthsState {
   // Actions
@@ -36,14 +35,7 @@ export const createSynthsSlice: StateCreator<
     }), false, 'synths/fetchSynths/start');
     
     try {
-      // Get public synths and user's private synths if authenticated
-      const { session } = get();
-      const userId = session?.user?.id;
-      
-      console.log('🔍 [SYNTHS STORE DEBUG] Fetching synths with userId:', userId);
-      
-      // Use the DataService to fetch public synths and optionally user's synths
-      const synths = await DataService.fetchPublicSynths(userId);
+      const synths = await DataService.fetchPublicSynths();
       
       console.log('🔍 [SYNTHS STORE DEBUG] Fetched synths:', synths.length, synths);
       
@@ -93,15 +85,8 @@ export const createSynthsSlice: StateCreator<
     if (entities.synths[id]) return entities.synths[id];
     
     try {
-      const { data, error } = await supabase
-        .from('coai-synths')
-        .select('*')
-        .eq('id', id)
-        .single();
-        
-      if (error) throw error;
-      
-      const synth = data as COAISynth;
+      const synth = await httpDataService.getSynth(id);
+      if (!synth) return null;
       
       // Update store with fetched synth
       set((state) => ({
@@ -138,8 +123,6 @@ export const createSynthsSlice: StateCreator<
   },
   
   createSynth: async (synthData: COAISynthData) => {
-    const { session } = get();
-    
     // Set loading state
     set((state) => ({
       ui: {
@@ -153,24 +136,10 @@ export const createSynthsSlice: StateCreator<
     
     try {
       // Prepare synth data with proper user_id if authenticated
-      const synthRecord = {
-        user_id: session?.user?.id,
-        synth_data: {
+      const newSynth = await httpDataService.createSynth({
           ...synthData,
-          // Ensure isPublic is included and defaults to true if not provided
           isPublic: synthData.isPublic !== undefined ? synthData.isPublic : true
-        }
-      };
-      
-      const { data, error } = await supabase
-        .from('coai-synths')
-        .insert(synthRecord)
-        .select()
-        .single();
-        
-      if (error) throw error;
-      
-      const newSynth = data as COAISynth;
+        });
       
       // Update store with new synth
       set((state) => ({
@@ -249,21 +218,7 @@ export const createSynthsSlice: StateCreator<
     
     try {
       // Prepare update data
-      const updateData = {
-        updated_at: new Date().toISOString(),
-        synth_data: updatedSynthData
-      };
-      
-      const { data, error } = await supabase
-        .from('coai-synths')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-        
-      if (error) throw error;
-      
-      const serverUpdatedSynth = data as COAISynth;
+      const serverUpdatedSynth = await httpDataService.updateSynth(id, updatedSynthData);
       
       // Update store with server response
       set((state) => ({
@@ -323,12 +278,7 @@ export const createSynthsSlice: StateCreator<
     }), false, 'synths/deleteSynth/optimistic');
     
     try {
-      const { error } = await supabase
-        .from('coai-synths')
-        .delete()
-        .eq('id', id);
-        
-      if (error) throw error;
+      await httpDataService.deleteSynth(id);
       
       // Update UI state on success
       set((state) => ({

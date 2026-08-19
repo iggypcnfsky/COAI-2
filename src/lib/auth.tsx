@@ -1,31 +1,26 @@
-import { createContext, useContext, ReactNode } from 'react'
-import { Session, User, AuthError } from '@supabase/supabase-js'
-import { COAIProfile, COAIProfileData } from '../types'
-import { useAuth as useZustandAuth } from '../hooks/store/useAuth'
+import { createContext, useContext, ReactNode } from 'react';
+import { COAIProfile, COAIProfileData } from '../types';
+import { AppSession, AppUser } from '../types/auth';
+import { useAuth as useZustandAuth } from '../hooks/store/useAuth';
 
 interface AuthContextType {
-  session: Session | null
-  user: User | null
-  profile: COAIProfile | null
-  loading: boolean
-  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
-  signInWithGoogle: () => Promise<{ error: AuthError | null }>
-  signUp: (email: string, password: string) => Promise<{ error: AuthError | null }>
-  signOut: () => Promise<{ error: AuthError | null }>
-  updateProfile: (profileData: Partial<COAIProfileData>) => Promise<{ error: Error | null }>
-  refreshProfile: () => Promise<void>
-  refreshProfileFromUser: () => Promise<void>
+  session: AppSession | null;
+  user: AppUser | null;
+  profile: COAIProfile | null;
+  loading: boolean;
+  signIn: (email?: string, password?: string) => Promise<{ error: Error | null }>;
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
+  signUp: (email?: string, password?: string) => Promise<{ error: Error | null }>;
+  signOut: () => Promise<{ error: Error | null }>;
+  updateProfile: (profileData: Partial<COAIProfileData>) => Promise<{ error: Error | null }>;
+  refreshProfile: () => Promise<void>;
+  refreshProfileFromUser: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/**
- * AuthProvider now uses Zustand store for state management
- * This maintains the same interface as before but delegates to Zustand
- */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Use the Zustand auth hook
-  const { 
+  const {
     session,
     user,
     profile,
@@ -35,17 +30,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUp,
     signOut,
     updateProfile,
-    refreshProfile
+    refreshProfile,
   } = useZustandAuth();
-  
-  // Create refreshProfileFromUser function for backward compatibility
+
   const refreshProfileFromUser = async () => {
     if (user) {
       await refreshProfile();
     }
   };
-  
-  // Provide the same context interface as before
+
   return (
     <AuthContext.Provider
       value={{
@@ -59,18 +52,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         updateProfile,
         refreshProfile,
-        refreshProfileFromUser
+        refreshProfileFromUser,
       }}
     >
       {children}
     </AuthContext.Provider>
-  )
+  );
 }
 
 export function useAuth(): AuthContextType {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
+    throw new Error('useAuth must be used within an AuthProvider');
   }
-  return context
-} 
+  return context;
+}

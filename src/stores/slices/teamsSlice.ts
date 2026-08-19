@@ -2,9 +2,8 @@ import { StateCreator } from 'zustand';
 import { RootState } from '../../types/store';
 import { COAITeam, COAITeamData, COAITeamSynth, COAITeamSynthReference } from '../../types';
 import { normalizeArray, removeEntity, addRelationship, removeRelationship, removeAllRelationships } from '../../lib/utils/normalization';
-import { supabase } from '../../lib/supabase';
+import { DataService, httpDataService } from '../../lib/services/dataService';
 import { LoadingStateKey } from '../../types/store';
-import { DataService } from '../../lib/services/dataService';
 
 export interface TeamsState {
   // Actions
@@ -42,12 +41,7 @@ export const createTeamsSlice: StateCreator<
     }), false, 'teams/fetchTeams/start');
     
     try {
-      // Get public teams and user's private teams if authenticated
-      const { session } = get();
-      const userId = session?.user?.id;
-      
-      // Use the DataService to fetch public teams and optionally user's teams
-      const teams = await DataService.fetchPublicTeams(userId);
+      const teams = await DataService.fetchPublicTeams();
       
       // Normalize teams by ID
       const normalizedTeams = normalizeArray(teams as COAITeam[]);
@@ -104,15 +98,8 @@ export const createTeamsSlice: StateCreator<
     if (entities.teams[id]) return entities.teams[id];
     
     try {
-      const { data, error } = await supabase
-        .from('coai-teams')
-        .select('*')
-        .eq('id', id)
-        .single();
-        
-      if (error) throw error;
-      
-      const team = data as COAITeam;
+      const team = await httpDataService.getTeam(id);
+      if (!team) return null;
       
       // Update store with fetched team
       set((state) => ({
@@ -152,8 +139,6 @@ export const createTeamsSlice: StateCreator<
   },
   
   createTeam: async (teamData: COAITeamData) => {
-    const { session } = get();
-    
     // Set loading state
     set((state) => ({
       ui: {
@@ -167,24 +152,10 @@ export const createTeamsSlice: StateCreator<
     
     try {
       // Prepare team data with proper user_id if authenticated
-      const teamRecord = {
-        user_id: session?.user?.id,
-        team_data: {
+      const newTeam = await httpDataService.createTeam({
           ...teamData,
-          // Ensure isPublic is included and defaults to true if not provided
           isPublic: teamData.isPublic !== undefined ? teamData.isPublic : true
-        }
-      };
-      
-      const { data, error } = await supabase
-        .from('coai-teams')
-        .insert(teamRecord)
-        .select()
-        .single();
-        
-      if (error) throw error;
-      
-      const newTeam = data as COAITeam;
+        });
       
       // Update store with new team
       set((state) => ({
@@ -263,21 +234,7 @@ export const createTeamsSlice: StateCreator<
     
     try {
       // Prepare update data
-      const updateData = {
-        updated_at: new Date().toISOString(),
-        team_data: updatedTeamData
-      };
-      
-      const { data, error } = await supabase
-        .from('coai-teams')
-        .update(updateData)
-        .eq('id', id)
-        .select()
-        .single();
-        
-      if (error) throw error;
-      
-      const serverTeam = data as COAITeam;
+      const serverTeam = await httpDataService.updateTeam(id, updatedTeamData);
       
       // Update store with server data (to ensure consistency)
       set((state) => ({
@@ -331,12 +288,7 @@ export const createTeamsSlice: StateCreator<
     }), false, 'teams/deleteTeam/optimistic');
     
     try {
-      const { error } = await supabase
-        .from('coai-teams')
-        .delete()
-        .eq('id', id);
-        
-      if (error) throw error;
+      await httpDataService.deleteTeam(id);
       
       // Success - optimistic update was correct
       
@@ -441,17 +393,7 @@ export const createTeamsSlice: StateCreator<
       }), false, 'teams/addSynthToTeam/optimistic');
       
       // Create team-synth relationship in database
-      const { error } = await supabase
-        .from('coai-team-synths')
-        .insert({
-          team_id: teamId,
-          synth_id: synthId,
-          synth_reference: reference
-        })
-        .select()
-        .single();
-        
-      if (error) throw error;
+      await httpDataService.addSynthToTeam(teamId, synthId, reference);
       
       // Success - optimistic update was correct
     } catch (error) {
@@ -480,13 +422,7 @@ export const createTeamsSlice: StateCreator<
       }), false, 'teams/removeSynthFromTeam/optimistic');
       
       // Remove team-synth relationship from database
-      const { error } = await supabase
-        .from('coai-team-synths')
-        .delete()
-        .eq('team_id', teamId)
-        .eq('synth_id', synthId);
-        
-      if (error) throw error;
+      await httpDataService.removeSynthFromTeam(teamId, synthId);
       
       // Success - optimistic update was correct
     } catch (error) {
@@ -507,31 +443,7 @@ export const createTeamsSlice: StateCreator<
   updateTeamSynthReference: async (teamId: string, synthId: string, reference: Partial<COAITeamSynthReference>) => {
     try {
       // Fetch current reference
-      const { data: currentData, error: fetchError } = await supabase
-        .from('coai-team-synths')
-        .select('synth_reference')
-        .eq('team_id', teamId)
-        .eq('synth_id', synthId)
-        .single();
-        
-      if (fetchError) throw fetchError;
-      
-      const currentReference = currentData.synth_reference;
-      
-      // Merge with updates
-      const updatedReference = {
-        ...currentReference,
-        ...reference
-      };
-      
-      // Update in database
-      const { error: updateError } = await supabase
-        .from('coai-team-synths')
-        .update({ synth_reference: updatedReference })
-        .eq('team_id', teamId)
-        .eq('synth_id', synthId);
-        
-      if (updateError) throw updateError;
+      await httpDataService.updateTeamSynthReference(teamId, synthId, reference);
       
     } catch (error) {
       console.error(`Error updating reference for synth ${synthId} in team ${teamId}:`, error);

@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 .env
+.env.clerk.tmp
+dev-dist
+.cursor/
 
 # Editor directories and files
 .vscode/*

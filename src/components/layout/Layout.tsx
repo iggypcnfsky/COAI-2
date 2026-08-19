@@ -13,10 +13,9 @@ import { CustomTeam } from '../browser/CreateTeamModal';
 // Use the Zustand store hooks instead of context
 import { useAuth } from '@/hooks/store/useAuth';
 // import { useTeamDynamics } from '@/hooks/useTeamDynamics'; // Removed - not using team dynamics
-import { useApiKey } from '@/hooks/store/useApiKey';
 import { useThreadSynths, useSynths, useTeams } from '@/hooks/store';
 import { COAITeamSynthReference, COAISynthData, COAITeamSynth } from '@/types';
-import { supabase } from '@/lib/supabase';
+import { httpDataService, HttpDataService } from '@/lib/services/dataService';
 import { useAppStore } from '@/stores/appStore';
 
 import { directService } from '@/lib/services/directService';
@@ -39,9 +38,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
   // Edit team modal state
   const [isEditTeamModalOpen, setIsEditTeamModalOpen] = useState(false);
   const [teamToEdit, setTeamToEdit] = useState<CustomTeam | null>(null);
-  
-  // API key context - same interface, but now powered by Zustand
-  const { isApiKeyValid } = useApiKey();
   
   // Auth context - same interface, but now powered by Zustand
   const { user } = useAuth();
@@ -278,53 +274,35 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       try {
         // Load synths for all teams in parallel (both user's and public teams)
         const teamSynthsPromises = allSupabaseTeams.map(async (team: any) => {
-          // First get the team-synth relationships
-          const { data: teamSynths, error } = await supabase
-            .from('coai-team-synths')
-            .select('*')
-            .eq('team_id', team.id)
-            .order('created_at', { ascending: true });
-          
-          if (error) {
+          try {
+            const teamSynths = await HttpDataService.fetchTeamSynths(team.id);
+            const enrichedTeamSynths = await Promise.all((teamSynths || []).map(async (teamSynth) => {
+              const synthId = teamSynth.synth_id || teamSynth.synth_reference?.synthId;
+              if (!synthId) return teamSynth;
+              try {
+                const synth = await httpDataService.getSynth(synthId);
+                if (synth) {
+                  return {
+                    ...teamSynth,
+                    synth_reference: {
+                      ...teamSynth.synth_reference,
+                      metadata: {
+                        ...teamSynth.synth_reference.metadata,
+                        actualSynthData: synth.synth_data,
+                      },
+                    },
+                  };
+                }
+              } catch (synthError) {
+                console.warn(`Failed to fetch synth data for ${synthId}:`, synthError);
+              }
+              return teamSynth;
+            }));
+            return { teamId: team.id, synths: enrichedTeamSynths };
+          } catch (error) {
             console.error(`Failed to load synths for team ${team.id}:`, error);
             return { teamId: team.id, synths: [] };
           }
-          
-          // For each team synth, also fetch the actual synth data to get profileImage
-          const enrichedTeamSynths = await Promise.all((teamSynths || []).map(async (teamSynth) => {
-            const synthId = teamSynth.synth_reference?.synthId;
-            if (!synthId) return teamSynth;
-            
-            try {
-              // Fetch the actual synth data
-              const { data: synthData, error: synthError } = await supabase
-                .from('coai-synths')
-                .select('synth_data')
-                .eq('id', synthId)
-                .single();
-              
-              if (!synthError && synthData) {
-                // Enrich the team synth with actual synth data
-                return {
-                  ...teamSynth,
-                  synth_reference: {
-                    ...teamSynth.synth_reference,
-                    metadata: {
-                      ...teamSynth.synth_reference.metadata,
-                      // Add the actual synth data to metadata for easy access
-                      actualSynthData: synthData.synth_data
-                    }
-                  }
-                };
-              }
-            } catch (synthError) {
-              console.warn(`Failed to fetch synth data for ${synthId}:`, synthError);
-            }
-            
-            return teamSynth;
-          }));
-          
-          return { teamId: team.id, synths: enrichedTeamSynths };
         });
 
         const teamSynthsResults = await Promise.all(teamSynthsPromises);
@@ -1058,9 +1036,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     if (user) {
       try {
         // Convert CustomTeam to COAITeamData format
-        // Store original keywords for later image generation
-        const originalKeywords = (newTeam as any).originalKeywords || 'professional team';
-        
         const teamData = {
           name: newTeam.name,
           description: newTeam.description || `Team with ${newTeam.selectedSynths.length} members`,
@@ -1094,22 +1069,14 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
         });
 
         // Create team with synths in one operation
-        const { createTeamWithSynths } = await import('@/lib/database');
-        const savedTeam = await createTeamWithSynths(user.id, teamData, synthReferences);
+        const savedTeam = await httpDataService.createTeamWithSynths(teamData, synthReferences);
         
         // Trigger image generation immediately with the saved team data
         import('@/lib/api-utils').then(({ generateTeamImage, generateSynthImage }) => {
-          // Generate team image using the saved team data directly
-          const teamDataForImage = {
-            id: savedTeam.id,
+          generateTeamImage({
             name: teamData.name,
-            description: teamData.description,
-            teamType: 'team',
-            keywords: originalKeywords,
-            members: newSynths // Use the original synth data
-          };
-          
-                      generateTeamImage(teamDataForImage).then((teamImageUrl: string) => {
+            teamImage: teamData.teamImage,
+          }).then((teamImageUrl: string) => {
               // Update via the teams hook
               updateSupabaseTeam(savedTeam.id, {
                 name: teamData.name,
@@ -1648,12 +1615,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       return;
     }
 
-    // Check if API key is provided
-    if (!isApiKeyValid) {
-      console.error('❌ No OpenAI API key provided');
-      return;
-    }
-    
     // Handle both old string format and new object format for backward compatibility
     const fullContent = typeof messageData === 'string' ? messageData : messageData.full;
     
@@ -1667,7 +1628,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     } catch (error) {
       console.error('❌ Failed to send message via directService:', error);
     }
-  }, [teamMembers, isApiKeyValid, activeThreadId]);
+  }, [teamMembers, activeThreadId]);
 
   // Handle AI continuation (spacebar trigger) - WORKING VERSION
   const handleAIContinue = React.useCallback(async () => {
@@ -1676,12 +1637,6 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
       return;
     }
 
-    // Check if API key is provided
-    if (!isApiKeyValid) {
-      console.error('❌ No OpenAI API key provided for AI continuation');
-      return;
-    }
-    
     // Use directService to handle AI continuation - this will trigger all team members to respond
     try {
       if (activeThreadId) {
@@ -1693,7 +1648,7 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     } catch (error) {
       console.error('❌ Failed to send AI continuation via directService:', error);
     }
-  }, [threadSynths, threadTeamMembers, teamMembers, isApiKeyValid, activeThreadId]);
+  }, [threadSynths, threadTeamMembers, teamMembers, activeThreadId]);
 
   // Legacy randomizeTeamOrder removed - using directService instead
 

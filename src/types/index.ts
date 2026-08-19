@@ -1,6 +1,25 @@
 // Define the base types used throughout the application
 
 // AI Employee type definition
+export type BaseModelId =
+  | 'gpt-4.1-nano'
+  | 'o4-mini'
+  | 'o3'
+  | 'o1'
+  | 'gpt-4.1'
+  | 'gpt-4o'
+  | 'chatgpt-4o-latest'
+  | 'claude-3-5-sonnet'
+  | 'claude-4-sonnet'
+  | 'claude-4-opus'
+  | 'sonar'
+  | 'sonar-pro'
+  | 'sonar-reasoning'
+  | 'sonar-reasoning-pro'
+  | 'gemini-2.5-flash'
+  | 'gemini-2.5-pro'
+  | string;
+
 export interface AIEmployee {
   id: string;
   name: string;
@@ -11,7 +30,7 @@ export interface AIEmployee {
   bio?: string;
   experience?: string[];
   systemPrompt: string;
-  baseModel: 'gpt-4.1-nano' | 'o4-mini' | 'o3' | 'o1' | 'gpt-4.1' | 'gpt-4o' | 'chatgpt-4o-latest' | 'claude-3-5-sonnet' | 'claude-4-sonnet' | 'claude-4-opus' | 'sonar' | 'sonar-pro' | 'sonar-reasoning' | 'sonar-reasoning-pro';
+  baseModel: BaseModelId;
   isLoadingImage?: boolean; // Flag to indicate if profile image is still being generated
   isPublic?: boolean; // Flag to indicate if this synth is publicly visible
   chatColor?: string; // Custom color for chat messages
@@ -111,7 +130,7 @@ export interface COAISynthData {
   bio?: string;
   experience?: string[];
   systemPrompt: string;
-  baseModel: 'gpt-4.1-nano' | 'o4-mini' | 'o3' | 'o1' | 'gpt-4.1' | 'gpt-4o' | 'chatgpt-4o-latest' | 'claude-3-5-sonnet' | 'claude-4-sonnet' | 'claude-4-opus' | 'sonar' | 'sonar-pro' | 'sonar-reasoning' | 'sonar-reasoning-pro';
+  baseModel: BaseModelId;
   isPublic?: boolean;
   chatColor?: string; // Custom color for chat messages
   metadata?: Record<string, any>;

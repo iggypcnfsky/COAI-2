@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: coai
+      POSTGRES_PASSWORD: coai
+      POSTGRES_DB: coai
+    ports:
+      - "5432:5432"
+    volumes:
+      - coai_pg:/var/lib/postgresql/data
+
+volumes:
+  coai_pg:

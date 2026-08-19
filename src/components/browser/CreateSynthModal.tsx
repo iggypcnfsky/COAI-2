@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ModelSelectItems } from '@/components/ModelSelect';
 import { Slider } from '@/components/ui/slider';
 import { Upload, X, Wand2, User, Loader2, Sparkles } from 'lucide-react';
 import { AIEmployee } from '@/types';
@@ -252,20 +253,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
                       <SelectValue placeholder="Select AI model" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="gpt-4.1-nano">GPT-4.1 Nano</SelectItem>
-                      <SelectItem value="o4-mini">O4 Mini</SelectItem>
-                      <SelectItem value="o3">O3</SelectItem>
-                      <SelectItem value="o1">O1</SelectItem>
-                      <SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
-                      <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                      <SelectItem value="chatgpt-4o-latest">ChatGPT-4o Latest</SelectItem>
-                      <SelectItem value="claude-3-5-sonnet">Claude 3.5 Sonnet</SelectItem>
-                      <SelectItem value="claude-4-sonnet">Claude 4 Sonnet</SelectItem>
-                      <SelectItem value="claude-4-opus">Claude 4 Opus</SelectItem>
-                                          <SelectItem value="sonar">Perplexity Sonar</SelectItem>
-                    <SelectItem value="sonar-pro">Perplexity Sonar Pro</SelectItem>
-                    <SelectItem value="sonar-reasoning">Perplexity Sonar Reasoning</SelectItem>
-                    <SelectItem value="sonar-reasoning-pro">Perplexity Sonar Reasoning Pro</SelectItem>
+                      <ModelSelectItems />
                     </SelectContent>
                   </Select>
                 </div>
@@ -508,20 +496,7 @@ const CreateSynthModal: React.FC<CreateSynthModalProps> = ({
                 <SelectValue placeholder="Select AI model" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="gpt-4.1-nano">GPT-4.1 Nano</SelectItem>
-                <SelectItem value="o4-mini">O4 Mini</SelectItem>
-                <SelectItem value="o3">O3</SelectItem>
-                <SelectItem value="o1">O1</SelectItem>
-                <SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
-                <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                <SelectItem value="chatgpt-4o-latest">ChatGPT-4o Latest</SelectItem>
-                <SelectItem value="claude-3-5-sonnet">Claude 3.5 Sonnet</SelectItem>
-                <SelectItem value="claude-4-sonnet">Claude 4 Sonnet</SelectItem>
-                <SelectItem value="claude-4-opus">Claude 4 Opus</SelectItem>
-                                    <SelectItem value="sonar">Perplexity Sonar</SelectItem>
-                    <SelectItem value="sonar-pro">Perplexity Sonar Pro</SelectItem>
-                    <SelectItem value="sonar-reasoning">Perplexity Sonar Reasoning</SelectItem>
-                    <SelectItem value="sonar-reasoning-pro">Perplexity Sonar Reasoning Pro</SelectItem>
+                <ModelSelectItems />
               </SelectContent>
             </Select>
           </div>

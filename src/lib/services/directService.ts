@@ -1,14 +1,12 @@
 /**
  * Direct Service Implementation
- * 
- * This service handles business logic and API orchestration.
- * For authenticated users, it delegates data operations to SupabaseDataService.
- * For unauthenticated users, it uses in-memory storage and direct API calls.
+ *
+ * Business logic and AI orchestration. Data access goes through HttpDataService.
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { SupabaseDataService, IDataService } from './dataService';
-import { supabase } from '../supabase';
+import { IDataService, httpDataService } from './dataService';
+import { apiStream } from '../api/client';
 import { getState } from '../../stores';
 import { 
   COAISynth, 
@@ -32,7 +30,6 @@ import {
   createFreshStartPrompt
 } from '../utils/promptReinjection';
 
-// In-memory storage for unauthenticated mode
 const memoryStore = {
   synths: new Map<string, COAISynth>(),
   teams: new Map<string, COAITeam>(),
@@ -40,219 +37,27 @@ const memoryStore = {
   messages: new Map<string, COAIMessage>(),
   teamSynths: new Map<string, Map<string, COAITeamSynthReference>>(),
   threadMessages: new Map<string, string[]>(),
-  activeThreadId: null as string | null
+  activeThreadId: null as string | null,
 };
 
 class DirectService implements IDataService {
-  private dataService: SupabaseDataService | null = null;
+  private dataService: IDataService = httpDataService;
   private tempUserId: string | null = null;
-  
-  constructor() {
-    // API base URL removed as it's not currently used
-  }
-  
-  // Initialize with user for authenticated mode
-  setUser(userId: string | null) {
-    if (userId) {
-      this.dataService = new SupabaseDataService(userId);
-      this.tempUserId = null;
-    } else {
-      this.dataService = null;
-      // Don't create temporary user immediately - wait until they create their first thread
-      this.loadExistingTempUser();
-    }
+
+  setUser(_userId: string | null) {
+    this.dataService = httpDataService;
   }
 
-  // Load existing temporary user from localStorage if available
-  private async loadExistingTempUser() {
-    try {
-      // Check if we already have a temp user ID in localStorage
-      const existingTempUserId = localStorage.getItem('tempUserId');
-      
-      if (existingTempUserId) {
-        // Verify the temp user still exists in the new temp profiles table
-        const { data, error } = await supabase
-          .from('coai-temp-profiles')
-          .select('temp_user_id')
-          .eq('temp_user_id', existingTempUserId)
-          .single();
-        
-        if (!error && data) {
-          this.tempUserId = existingTempUserId;
-          this.dataService = new SupabaseDataService(existingTempUserId);
-          console.log('🔄 Using existing temporary user:', existingTempUserId);
-          return;
-        } else {
-          // Clean up invalid temp user ID
-          localStorage.removeItem('tempUserId');
-        }
-      }
-      
-      // No existing temp user found - will be created when needed
-      this.tempUserId = null;
-      this.dataService = null;
-      
-    } catch (error) {
-      console.error('Error loading existing temporary user:', error);
-      // Clean up on error
-      localStorage.removeItem('tempUserId');
-      this.tempUserId = null;
-      this.dataService = null;
-    }
-  }
-
-  // Create a temporary user profile when they first create a thread
   private async createTempUserOnDemand(): Promise<boolean> {
-    try {
-      console.log('🔄 [DIRECT SERVICE] Creating temporary user on demand...');
-      
-      // Create new temporary user
-      const tempUserId = uuidv4();
-      const tempProfileData = {
-        isTemporary: true,
-        createdAt: new Date().toISOString(),
-        sessionId: uuidv4() // Additional tracking
-      };
-      
-      console.log('🔍 [DIRECT SERVICE] Inserting temp user profile:', tempUserId);
-      
-      // Insert into the new temp profiles table (no foreign key constraints!)
-      const { error } = await supabase
-        .from('coai-temp-profiles')
-        .insert({
-          temp_user_id: tempUserId,
-          profile_data: tempProfileData
-        })
-        .select()
-        .single();
-      
-      if (error) {
-        console.error('❌ [DIRECT SERVICE] Failed to create temporary user:', error);
-        return false;
-      }
-      
-      this.tempUserId = tempUserId;
-      this.dataService = new SupabaseDataService(tempUserId);
-      
-      // Store temp user ID in localStorage for session persistence
-      localStorage.setItem('tempUserId', tempUserId);
-      
-      console.log('✨ [DIRECT SERVICE] Created new temporary user on demand:', tempUserId);
-      console.log('✅ [DIRECT SERVICE] DataService initialized for temp user');
-      return true;
-      
-    } catch (error) {
-      console.error('❌ [DIRECT SERVICE] Error creating temporary user on demand:', error);
-      return false;
-    }
+    return true;
   }
 
-  // Clean up temporary user data when user signs up (call this when converting to real user)
-  async convertTempUserToRealUser(realUserId: string): Promise<void> {
-    if (!this.tempUserId) return;
-    
-    try {
-      console.log('🔄 Converting temporary user to real user:', this.tempUserId, '->', realUserId);
-      
-      // Update all temp user's data to belong to the real user
-      await Promise.all([
-        // Update synths
-        supabase
-          .from('coai-synths')
-          .update({ user_id: realUserId })
-          .eq('user_id', this.tempUserId),
-        
-        // Update teams
-        supabase
-          .from('coai-teams')
-          .update({ user_id: realUserId })
-          .eq('user_id', this.tempUserId),
-        
-        // Update threads
-        supabase
-          .from('coai-threads')
-          .update({ user_id: realUserId })
-          .eq('user_id', this.tempUserId),
-        
-        // Update messages
-        supabase
-          .from('coai-messages')
-          .update({ user_id: realUserId })
-          .eq('user_id', this.tempUserId),
-        
-        // Update team-synths relationships
-        supabase
-          .from('coai-team-synths')
-          .update({ user_id: realUserId })
-          .eq('user_id', this.tempUserId),
-        
-        // Update thread-synths relationships
-        supabase
-          .from('coai-thread-synths')
-          .update({ user_id: realUserId })
-          .eq('user_id', this.tempUserId)
-      ]);
-      
-      // Delete temporary profile from the new temp table
-      await supabase
-        .from('coai-temp-profiles')
-        .delete()
-        .eq('temp_user_id', this.tempUserId);
-      
-      // Clear localStorage
-      localStorage.removeItem('tempUserId');
-      
-      console.log('✅ Successfully converted temporary user to real user');
-      
-    } catch (error) {
-      console.error('Error converting temporary user:', error);
-    }
+  async convertTempUserToRealUser(_realUserId: string): Promise<void> {
+    return;
   }
-  
-  // Helper to get the API keys from the store
-  private getApiKeys(): Record<string, string> {
-    const apiKeys: Record<string, string> = {};
-    
-    try {
-      const state = getState();
-      if (state.tempApiKeys) {
-        Object.entries(state.tempApiKeys).forEach(([provider, key]) => {
-          if (key) {
-            apiKeys[provider] = key;
-          }
-        });
-      }
-    } catch (storeError) {
-      console.error('Error accessing store state:', storeError);
-    }
-    
-    // Fallback to localStorage
-    if (Object.keys(apiKeys).length === 0) {
-      try {
-        const savedApiKeys = localStorage.getItem('tempApiKeys');
-        if (savedApiKeys) {
-            const localStorageKeys = JSON.parse(savedApiKeys);
-            Object.entries(localStorageKeys).forEach(([provider, key]) => {
-              if (key) {
-                apiKeys[provider] = key as string;
-            }
-          });
-        }
-      } catch (error) {
-        console.error('Error accessing localStorage:', error);
-      }
-    }
-    
-    return apiKeys;
-  }
-  
-  private hasRequiredApiKeys(): boolean {
-    const apiKeys = this.getApiKeys();
-    return !!apiKeys.openai;
-  }
-  
+
   isAuthenticated(): boolean {
-    return !!this.dataService && !this.tempUserId;
+    return true;
   }
   
   // Check if using temporary user (for UI logic)
@@ -262,7 +67,7 @@ class DirectService implements IDataService {
   
   // Get current user ID (temporary or authenticated)
   getCurrentUserId(): string | null {
-    return this.tempUserId || (this.dataService ? this.dataService.getUserId() : null);
+    return getState().user?.id || null;
   }
   
   // Get temporary user ID (for conversion purposes)
@@ -705,12 +510,9 @@ class DirectService implements IDataService {
    */
   async sendMessage(threadId: string, messageData: COAIMessageData): Promise<COAIMessage> {
     const userMessage = await this.createMessage(threadId, messageData);
-    
-    if (this.hasRequiredApiKeys()) {
-      this.generateAIResponse(threadId, messageData.content || '').catch(error => {
-        console.error('Failed to generate AI response:', error);
-      });
-    }
+    this.generateAIResponse(threadId, messageData.content || '').catch(error => {
+      console.error('Failed to generate AI response:', error);
+    });
     
     return userMessage;
   }
@@ -779,14 +581,8 @@ class DirectService implements IDataService {
       }
       
       const recentMessages = await this.fetchMessages(threadId, { limit: 20 });
-    const apiKeys = this.getApiKeys();
     
-    if (!apiKeys.openai) {
-        console.error('No OpenAI API key available for AI response');
-        return;
-      }
-      
-      await this.generateTeamResponses(
+    await this.generateTeamResponses(
         threadId,
         userMessage,
         threadSynths.map(ts => ({
@@ -794,7 +590,7 @@ class DirectService implements IDataService {
           reference: ts.synth_reference
         })),
         recentMessages,
-        apiKeys.openai
+        ''
       );
       
     } catch (error) {
@@ -853,7 +649,7 @@ class DirectService implements IDataService {
     userMessage: string, 
     teamSynths: { synthId: string; reference: COAITeamSynthReference }[],
     threadMessages: COAIMessage[],
-    openaiApiKey: string
+    _openaiApiKey: string
   ): Promise<void> {
     console.log(`🤖 Generating responses for ${teamSynths.length} synths in thread ${threadId}`);
     
@@ -1022,36 +818,15 @@ class DirectService implements IDataService {
         const streamingMessageId = await state.startMessageStream(threadId, '', aiEmployee);
         console.log(`🔍 DEBUG: Created streaming message ${streamingMessageId} for ${synthData.reference.metadata?.name}`);
         
-        // Get all API keys from store
-        const apiKeys = this.getApiKeys();
-        
         const requestBody = {
           messages: chatHistory,
           role: synthData.reference.metadata?.role || 'Assistant',
-          model: synthData.reference.metadata?.model || 'gpt-4',
+          model: synthData.reference.metadata?.model || 'gpt-4o',
           employeePrompt: systemPrompt,
           employeeName: synthData.reference.metadata?.name || 'AI',
-          openaiApiKey: apiKeys.openai,
-          anthropicApiKey: apiKeys.anthropic,
-          perplexityApiKey: apiKeys.perplexity
         };
         
-        console.log(`🔍 DEBUG: Request body for ${synthData.reference.metadata?.name}:`, {
-          ...requestBody,
-          openaiApiKey: openaiApiKey ? `${openaiApiKey.substring(0, 10)}...` : 'MISSING',
-          messages: `${chatHistory.length} messages`,
-          employeePrompt: `${systemPrompt.length} chars`
-        });
-        
-        // Use the correct Supabase Edge Function call
-        const response = await fetch(`https://hiuinnexazfqhodamhgk.supabase.co/functions/v1/chat`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpdWlubmV4YXpmcWhvZGFtaGdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mjk1MzU3MDIsImV4cCI6MjA0NTExMTcwMn0.iLC9JDOaaGZbsMMwTOZOCfFDdvkVZIvKU41CFoaicx0`,
-          },
-          body: JSON.stringify(requestBody),
-        });
+        const response = await apiStream('/chat', requestBody);
         
         console.log(`🔍 DEBUG: Response status for ${synthData.reference.metadata?.name}:`, response.status, response.statusText);
         

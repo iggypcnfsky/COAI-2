@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { ChatMessage as ChatMessageType, AIEmployee, TeamMember } from '@/types';
+import { MODEL_CATALOG } from '@shared/models';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, X } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ModelSelectItems } from '@/components/ModelSelect';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import MarkdownRenderer from './MarkdownRenderer';
 import { getRoleInfo } from '@/lib/roleColors';
@@ -40,48 +42,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   const currentModel = getCurrentSynthModel();
   
   const getModelInfo = (model: string) => {
-    switch (model) {
-      case 'gpt-4.1-nano':
-        return { display: 'GPT-4.1 Nano' };
-      case 'o4-mini':
-        return { display: 'o4 Mini' };
-      case 'o3':
-        return { display: 'o3' };
-      case 'o1':
-        return { display: 'o1' };
-      case 'gpt-4.1':
-        return { display: 'GPT-4.1' };
-      case 'gpt-4o':
-        return { display: 'GPT-4o' };
-      case 'gpt-4o-mini':
-        return { display: 'GPT-4o Mini' };
-      case 'o3-mini':
-        return { display: 'o3 Mini' };
-      case 'o1-mini':
-        return { display: 'o1 Mini' };
-      case 'chatgpt-4o-latest':
-        return { display: 'ChatGPT-4o Latest' };
-      case 'claude-3-5-sonnet':
-        return { display: 'Claude 3.5' };
-      case 'claude-4-sonnet':
-        return { display: 'Claude 4 Sonnet' };
-      case 'claude-4-opus':
-        return { display: 'Claude 4 Opus' };
-      case 'claude-3-opus':
-        return { display: 'Claude 3 Opus' };
-      case 'sonar':
-        return { display: 'Perplexity Sonar' };
-      case 'sonar-pro':
-        return { display: 'Perplexity Sonar Pro' };
-      case 'sonar-reasoning':
-        return { display: 'Perplexity Sonar Reasoning' };
-      case 'sonar-reasoning-pro':
-        return { display: 'Perplexity Sonar Reasoning Pro' };
-      case 'gemini-1.5-pro':
-        return { display: 'Gemini 1.5' };
-      default:
-        return { display: model };
-    }
+    const match = MODEL_CATALOG.find((item) => item.id === model);
+    return { display: match?.label || model };
   };
 
   const handleModelChange = (newModel: string) => {
@@ -193,20 +155,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="gpt-4.1-nano">GPT-4.1 Nano</SelectItem>
-                          <SelectItem value="o4-mini">o4 Mini</SelectItem>
-                          <SelectItem value="o3">o3</SelectItem>
-                          <SelectItem value="o1">o1</SelectItem>
-                          <SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
-                          <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                          <SelectItem value="chatgpt-4o-latest">ChatGPT-4o Latest</SelectItem>
-                          <SelectItem value="claude-3-5-sonnet">Claude 3.5 Sonnet</SelectItem>
-                          <SelectItem value="claude-4-sonnet">Claude 4 Sonnet</SelectItem>
-                          <SelectItem value="claude-4-opus">Claude 4 Opus</SelectItem>
-                          <SelectItem value="sonar">Perplexity Sonar</SelectItem>
-                          <SelectItem value="sonar-pro">Perplexity Sonar Pro</SelectItem>
-                          <SelectItem value="sonar-reasoning">Perplexity Sonar Reasoning</SelectItem>
-                          <SelectItem value="sonar-reasoning-pro">Perplexity Sonar Reasoning Pro</SelectItem>
+                          <ModelSelectItems />
                         </SelectContent>
                       </Select>
                     </div>

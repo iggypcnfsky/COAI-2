@@ -175,32 +175,10 @@ export const useAppStore = create<RootState>()(
         name: 'coai-store',
         // Only persist authenticated data
         partialize: (state) => {
-          // Only log in debug mode and avoid excessive logging
-          if (DEBUG && Math.random() < 0.01) { // Reduced from 10% to 1% to minimize spam
-            console.log('DEBUG - Partializing state for persistence');
+          if (!state.isAuthenticated) {
+            return {};
           }
-          
-          // For authenticated users, persist everything
-          if (state.isAuthenticated) {
-            return state;
-          }
-          
-          // For unauthenticated users, only persist temp API keys and documents
-          return { 
-            ...initialState,
-            // Keep temp API keys and documents
-            tempApiKeys: state.tempApiKeys,
-            entities: {
-              ...initialState.entities,
-              documents: state.entities.documents
-            },
-            // Ensure UI state is properly initialized
-            ui: {
-              ...initialState.ui,
-              messageInput: state.ui?.messageInput || initialMessageInputState,
-              profileSection: state.ui?.profileSection || initialProfileSectionState
-            }
-          };
+          return state;
         },
         // Fix potential hydration issues
         onRehydrateStorage: () => (state) => {

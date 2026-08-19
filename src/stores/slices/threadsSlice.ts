@@ -1,8 +1,8 @@
 import { StateCreator } from 'zustand';
 import { RootState } from '../../types/store';
-import { Thread, COAIThread, COAITeamSynth, COAITeamSynthReference } from '../../types';
+import { Thread, COAITeamSynth, COAITeamSynthReference } from '../../types';
 import { normalizeArray, removeEntity, addRelationship, removeRelationship, removeAllRelationships } from '../../lib/utils/normalization';
-import { supabase } from '../../lib/supabase';
+import { httpDataService } from '../../lib/services/dataService';
 import { LoadingStateKey } from '../../types/store';
 import { directService } from '../../lib/services/directService';
 
@@ -29,7 +29,7 @@ export const createThreadsSlice: StateCreator<
   ThreadsState
 > = (set, get) => ({
   // Actions
-  fetchThreads: async (teamId?: string) => {
+  fetchThreads: async (_teamId?: string) => {
     // Set loading state
     set((state) => ({
       ui: {
@@ -42,27 +42,8 @@ export const createThreadsSlice: StateCreator<
     }), false, 'threads/fetchThreads/start');
     
     try {
-      let query = supabase
-        .from('coai-threads')
-        .select('*');
-      
-      // Filter by team_id if provided
-      if (teamId) {
-        query = query.eq('team_id', teamId);
-      }
-        
-      const { data: threads, error } = await query;
-        
-      if (error) throw error;
-      
-      // Process threads to convert to frontend format
-      const processedThreads: Thread[] = (threads as COAIThread[]).map(thread => ({
-        id: thread.id,
-        title: thread.thread_data.title || 'Untitled Thread',
-        isActive: thread.thread_data.isActive !== false, // Default to true if not specified
-        createdAt: new Date(thread.created_at),
-        updatedAt: new Date(thread.updated_at)
-      }));
+      const threads = await httpDataService.fetchThreads();
+      const processedThreads: Thread[] = threads;
       
       // Normalize threads by ID
       const normalizedThreads = normalizeArray(processedThreads);
@@ -110,24 +91,8 @@ export const createThreadsSlice: StateCreator<
     if (entities.threads[id]) return entities.threads[id];
     
     try {
-      const { data, error } = await supabase
-        .from('coai-threads')
-        .select('*')
-        .eq('id', id)
-        .single();
-        
-      if (error) throw error;
-      
-      const threadData = data as COAIThread;
-      
-      // Convert to frontend format
-      const thread: Thread = {
-        id: threadData.id,
-        title: threadData.thread_data.title || 'Untitled Thread',
-        isActive: threadData.thread_data.isActive !== false, // Default to true if not specified
-        createdAt: new Date(threadData.created_at),
-        updatedAt: new Date(threadData.updated_at)
-      };
+      const thread = await httpDataService.getThread(id);
+      if (!thread) return null;
       
       // Update store with fetched thread
       set((state) => ({
@@ -164,8 +129,6 @@ export const createThreadsSlice: StateCreator<
   },
   
   createThread: async (title: string) => {
-    const { session } = get();
-    
     // Set loading state
     set((state) => ({
       ui: {
@@ -178,33 +141,7 @@ export const createThreadsSlice: StateCreator<
     }), false, 'threads/createThread/start');
     
     try {
-      // Prepare thread data
-      const threadRecord = {
-        user_id: session?.user?.id,
-        thread_data: {
-          title: title || 'Untitled Thread',
-          isActive: true
-        }
-      };
-      
-      const { data, error } = await supabase
-        .from('coai-threads')
-        .insert(threadRecord)
-        .select()
-        .single();
-        
-      if (error) throw error;
-      
-      const threadData = data as COAIThread;
-      
-      // Convert to frontend format
-      const newThread: Thread = {
-        id: threadData.id,
-        title: threadData.thread_data.title || 'Untitled Thread',
-        isActive: threadData.thread_data.isActive !== false,
-        createdAt: new Date(threadData.created_at),
-        updatedAt: new Date(threadData.updated_at)
-      };
+      const newThread = await httpDataService.createThread(title || 'Untitled Thread');
       
       // Update store with new thread
       set((state) => ({
@@ -279,22 +216,7 @@ export const createThreadsSlice: StateCreator<
     
     try {
       // Convert frontend thread format to database format
-      const threadUpdateData = {
-        thread_data: {
-          title: updatedThread.title,
-          isActive: updatedThread.isActive
-        },
-        updated_at: new Date().toISOString()
-      };
-      
-      const { error } = await supabase
-        .from('coai-threads')
-        .update(threadUpdateData)
-        .eq('id', id)
-        .select()
-        .single();
-        
-      if (error) throw error;
+      await httpDataService.updateThread(id, updates);
       
       // Success - optimistic update was correct
       return updatedThread;
@@ -341,12 +263,7 @@ export const createThreadsSlice: StateCreator<
     }), false, 'threads/deleteThread/optimistic');
     
     try {
-      const { error } = await supabase
-        .from('coai-threads')
-        .delete()
-        .eq('id', id);
-        
-      if (error) throw error;
+      await httpDataService.deleteThread(id);
       
       // Success - optimistic update was correct
       

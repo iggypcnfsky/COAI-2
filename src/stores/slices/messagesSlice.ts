@@ -3,7 +3,7 @@ import { StateCreator } from 'zustand';
 import { COAIMessage, COAIMessageData } from '@/types';
 import { RootState, LoadingStateKey, MessageInputState } from '@/types/store';
 import { normalizeArray } from '../../lib/utils/normalization';
-import { supabase } from '@/lib/supabase';
+import { httpDataService } from '@/lib/services/dataService';
 
 // Extended COAIMessage type with optimistic flag
 type ExtendedCOAIMessage = COAIMessage & { _isOptimistic?: boolean };
@@ -68,23 +68,7 @@ export const createMessagesSlice: StateCreator<
     }), false, 'messages/fetchMessages/start');
     
     try {
-      let query = supabase
-        .from('coai-messages')
-        .select('*')
-        .eq('thread_id', threadId)
-        .order('created_at', { ascending: false })
-        .limit(limit);
-      
-      // Add before filter if provided
-      if (before) {
-        query = query.lt('created_at', before.toISOString());
-      }
-        
-      const { data: messages, error } = await query;
-        
-      if (error) throw error;
-      
-      const messagesList = messages as COAIMessage[];
+      const messagesList = await httpDataService.fetchMessages(threadId, { limit, before });
       
       // Normalize messages by ID
       const normalizedMessages = normalizeArray(messagesList);
@@ -154,15 +138,8 @@ export const createMessagesSlice: StateCreator<
     if (entities.messages[id]) return entities.messages[id];
     
     try {
-      const { data, error } = await supabase
-        .from('coai-messages')
-        .select('*')
-        .eq('id', id)
-        .single();
-        
-      if (error) throw error;
-      
-      const message = data as COAIMessage;
+      const message = await httpDataService.getMessage(id);
+      if (!message) return null;
       
       // Update store with fetched message
       set((state) => ({
@@ -385,16 +362,7 @@ export const createMessagesSlice: StateCreator<
     try {
       // Only send update to database if this is not an optimistic message
       if (!currentMessage._isOptimistic) {
-        const { data, error } = await supabase
-          .from('coai-messages')
-          .update({ message_data: updatedMessageData })
-          .eq('id', id)
-          .select()
-          .single();
-          
-        if (error) throw error;
-        
-        const serverMessage = data as COAIMessage;
+        const serverMessage = await httpDataService.updateMessage(id, updatedMessageData);
         
         // Update store with server data (to ensure consistency)
         set((state) => ({
@@ -468,12 +436,7 @@ export const createMessagesSlice: StateCreator<
     try {
       // Only send delete to database if this is not an optimistic message
       if (!currentMessage._isOptimistic) {
-        const { error } = await supabase
-          .from('coai-messages')
-          .delete()
-          .eq('id', id);
-          
-        if (error) throw error;
+        await httpDataService.deleteMessage(id);
       }
       
       // Success - optimistic update was correct

@@ -1,4 +1,4 @@
-import { Session, User } from '@supabase/supabase-js';
+import { AppSession, AppUser } from './auth';
 import { 
   COAIProfile, 
   COAISynth, 
@@ -89,29 +89,30 @@ export interface RootState {
   ui: UIState;
   
   // Auth slice state will be injected here
-  session: Session | null;
-  user: User | null;
+  session: AppSession | null;
+  user: AppUser | null;
   profile: COAIProfile | null;
   isAuthenticated: boolean;
+  subscriptionStatus: string;
+  onboardedAt: string | null;
+  hasByok: boolean;
   tempApiKeys: {
-    openai?: string;
-    anthropic?: string;
-    perplexity?: string;
-    googleai?: string;
+    openrouter?: string;
     [key: string]: string | undefined;
   };
   
   // Auth slice methods will be injected here
-  setSession: (session: Session | null) => void;
-  setUser: (user: User | null) => void;
+  setSession: (session: AppSession | null) => void;
+  setUser: (user: AppUser | null) => void;
   setProfile: (profile: COAIProfile | null) => void;
+  setSubscription: (status: string, onboardedAt?: string | null, hasByok?: boolean) => void;
   setTempApiKey: (provider: string, key: string) => void;
   removeTempApiKey: (provider: string) => void;
   clearTempApiKeys: () => void;
-  signIn: (email: string, password: string) => Promise<{ error: any | null }>;
-  signInWithGoogle: () => Promise<{ error: any | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: any | null }>;
-  signOut: () => Promise<{ error: any | null }>;
+  signIn: (email?: string, password?: string) => Promise<{ error: Error | null }>;
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
+  signUp: (email?: string, password?: string) => Promise<{ error: Error | null }>;
+  signOut: () => Promise<{ error: Error | null }>;
   updateProfile: (profileData: any) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
   refreshProfileFromUser: () => Promise<void>;
