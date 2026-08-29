@@ -133,14 +133,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
 
   return (
     <div 
-      className={`flex ${isUserMessage ? 'justify-end' : 'justify-start'} ${
+      className={`flex max-w-full min-w-0 ${isUserMessage ? 'justify-end' : 'justify-start'} ${
         hasFollowUp ? 'mb-1' : 'mb-5'
       } ${isDemo ? 'opacity-50' : ''} group`}
     >
-      <div className={`flex ${
+      <div className={`flex min-w-0 ${
         isUserMessage
           ? 'max-w-[min(34rem,78%)] flex-row-reverse items-end gap-2'
-          : 'flex-col items-start gap-1.5'
+          : 'max-w-full flex-col items-start gap-1.5'
       }`}>
         {isUserMessage && (
           <PersonAvatar
@@ -150,14 +150,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           />
         )}
         {!isUserMessage && message.aiEmployee && !isContinuation && (
-          <div className="flex items-center">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center">
             <PersonAvatar
               name={synthName}
               src={synthAvatar}
               className="h-7 w-7 mr-2"
             />
-            <div className="flex items-center">
-              <span className="text-sm font-medium mr-1">{message.aiEmployee.name}</span>
+            <div className="flex min-w-0 flex-wrap items-center">
+              <span className="text-sm font-medium mr-1 truncate">{message.aiEmployee.name}</span>
               {roleInfo && (
                 <Badge 
                   variant="outline" 

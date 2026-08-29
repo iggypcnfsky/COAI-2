@@ -162,3 +162,28 @@ body {
     padding-right: 0.5rem;
   }
 }
+
+.design-frame {
+  container-type: inline-size;
+}
+
+.design-frame-aside {
+  display: none;
+  min-width: 0;
+  flex-direction: column;
+}
+
+@container (min-width: 32rem) {
+  .design-frame-split {
+    grid-template-columns: 15.5rem minmax(0, 1fr);
+  }
+
+  .design-frame-aside {
+    display: flex;
+    border-right-width: 1px;
+  }
+
+  .design-spec-split {
+    grid-template-columns: 15rem minmax(0, 1fr);
+  }
+}

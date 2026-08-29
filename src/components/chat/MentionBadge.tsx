@@ -1,6 +1,7 @@
 import React from 'react';
 import { AIEmployee } from '@/types';
 import { getRoleInfo } from '@/lib/roleColors';
+import { PersonAvatar } from '@/components/ui/PersonAvatar';
 
 interface MentionBadgeProps {
   employee: AIEmployee;
@@ -15,10 +16,11 @@ const MentionBadge: React.FC<MentionBadgeProps> = ({ employee, className = '' })
     <span 
       className={`${defaultClasses} ${backgroundClasses}`}
     >
-      <img
+      <PersonAvatar
+        name={employee.name}
         src={employee.profileImage}
-        alt={employee.name}
-        className="w-3.5 h-3.5 rounded-full object-cover"
+        className="h-3.5 w-3.5"
+        fallbackClassName="text-[7px]"
       />
       <span>@{employee.name}</span>
     </span>

@@ -7,10 +7,10 @@
 - PWA, PostHog, and the Files tab were removed on purpose; do not re-add them.
 - Database failures during auth must not be returned as 401 Unauthorized.
 - Use "Groups" in the product UI, not "Teams".
-- Open synth/group details, create, and edit inside the left sidebar rather than extra sidebars or standalone modals.
+- Open synth/group details, create, and edit inside the left sidebar rather than extra sidebars or standalone modals. Put the user avatar at the bottom left; keep the logo and sidebar minimizer inline with synths/groups (no empty top nav). When the sidebar is collapsed, synth and group controls should be icons only. Synths should be the default open section. The divider between the sidebar and chat should be resizable.
 - Use Google Sans Flex as the app font.
 - AI-driven synth and group creation is a text prompt only; keep model, gender, and age pickers for manual create.
-- Group chats should feel like a natural multi-party conversation: members are aware of each other, speaker order is not fixed, and replies split into shorter sequential bubbles instead of one long paragraph.
+- Group chats should feel like a natural multi-party conversation: members are aware of each other, speaker order is not fixed, and replies split into shorter sequential bubbles instead of one long paragraph. Stream bubbles in short bursts (a few words at a time) with varied, narrower widths rather than identical full-width walls of text.
 - New synths are public by default; do not restore a private/public sidebar split.
 
 ## Learned Workspace Facts
@@ -25,3 +25,5 @@
 - Stripe test vs live is selected with API `STRIPE_MODE` (`test` or `live`).
 - OpenRouter keys and billing live in the Clerk profile modal.
 - Group generation should produce diverse members and avoid duplicate names, ages, and appearances.
+- Product branding is Corals (page title, landing, and logo), not COAI.
+- In-app design lab lives at `/design` (Storybook-style component catalog and mockup export).

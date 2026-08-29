@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { initializeAppData } from '@/lib/services';
 import { ClerkSync } from '@/components/auth/ClerkSync';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { DesignPage } from '@/components/pages/DesignPage';
 import { LandingPage } from '@/components/pages/LandingPage';
 import { SignInPage } from '@/components/pages/SignInPage';
 import { SignUpPage } from '@/components/pages/SignUpPage';
@@ -34,6 +35,8 @@ function App() {
       <ClerkSync />
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/design" element={<Navigate to="/design/foundations/logo" replace />} />
+        <Route path="/design/:section/:storyId" element={<DesignPage />} />
         <Route path="/sign-in/*" element={<SignInPage />} />
         <Route path="/sign-up/*" element={<SignUpPage />} />
         <Route path="/start" element={<StartPage />} />
