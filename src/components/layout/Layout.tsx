@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 // Removed duplicate imports - using existing ones below
-import Header from './Header';
+import { CollapsedSidebarRail, SidebarAccountFooter, SidebarBrandControls } from './Header';
 import BrowserPanel from '../browser/BrowserPanel';
 import ProfileSection from '../profile/ProfileSection';
 import TeamProfile from '../profile/TeamProfile';
 import CustomTeamProfile from '../profile/CustomTeamProfile';
 import ChatSection from '../chat/ChatSection';
 import EditTeamModal from '../browser/EditTeamModal';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { AIEmployee, ChatMessage, TeamMember, Team, COAITeam } from '@/types';
 import { CustomTeam } from '../browser/CreateTeamModal';
 // Legacy imports removed - using directService instead
@@ -2070,164 +2071,203 @@ const Layout: React.FC<LayoutProps> = ({ initialMessages }) => {
     (selectedEmployee || selectedTeamMember || selectedPremadeTeam || selectedCustomTeam) && !isProfileCollapsed
   );
 
+  const chatSection = (
+    <ChatSection
+      teamMembers={teamMembers}
+      onRemoveTeamMember={handleRemoveTeamMember}
+      onAddTeamMember={handleAddToThread}
+      onAddTeam={handleQuickAddToThread}
+      onSelectTeamMember={handleSelectTeamMember}
+      messages={messages}
+      onSendMessage={handleSendMessage}
+      onAIContinue={handleAIContinue}
+      onRemoveMessage={handleRemoveMessage}
+      onUpdateSynthModel={handleUpdateSynthModel}
+      employees={customSynths}
+      threads={teams}
+      activeThreadId={activeThreadId}
+      onSelectThread={handleSelectTeam}
+      onEditThreadName={handleEditTeamName}
+      onCreateChat={handleCreateNewChat}
+      onDeleteThread={handleDeleteTeam}
+      onClearChat={handleClearChat}
+      isWaitingForStream={isWaitingForStream}
+      globalSpacebarCount={globalSpacebarCount}
+    />
+  );
+
+  const browserPane = (
+    <div className="sidebar-pane h-full min-h-0 flex flex-col">
+      {showSidebarDetails && (
+        <div className="flex-1 min-h-0 bg-white dark:bg-neutral-900 max-md:fixed max-md:inset-0 max-md:z-50 flex flex-col">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
+            <SidebarBrandControls
+              isBrowserCollapsed={isBrowserCollapsed}
+              onToggleBrowser={() => setIsBrowserCollapsed(!isBrowserCollapsed)}
+            />
+          </div>
+          <div className="flex-1 min-h-0">
+          {selectedPremadeTeam ? (
+            <TeamProfile
+              team={{
+                id: selectedPremadeTeam.id,
+                name: selectedPremadeTeam.team_data.name,
+                selectedSynths: [], // COAITeam doesn't have selectedSynths, would need to fetch from team-synths
+                createdAt: new Date(selectedPremadeTeam.created_at),
+                description: selectedPremadeTeam.team_data.description,
+                teamImage: selectedPremadeTeam.team_data.teamImage
+              }}
+              onBack={() => {
+                setIsProfileCollapsed(true);
+                setSelectedPremadeTeam(null);
+              }}
+              onAddTeam={handleQuickAddToThread}
+              onSelectEmployee={handleSelectEmployee}
+            />
+          ) : isEditTeamModalOpen && teamToEdit ? (
+            <EditTeamModal
+              isOpen={isEditTeamModalOpen}
+              onClose={handleCloseEditTeamModal}
+              onSave={handleSaveEditedTeam}
+              availableSynths={customSynths}
+              customSynths={customSynths}
+              team={teamToEdit}
+            />
+          ) : selectedCustomTeam ? (
+            <CustomTeamProfile
+              team={selectedCustomTeam}
+              onBack={() => {
+                setIsProfileCollapsed(true);
+                setSelectedCustomTeam(null);
+              }}
+              onAddTeam={handleQuickAddToThread}
+              onSelectEmployee={handleSelectEmployee}
+              onEditTeam={handleEditCustomTeam}
+              onDeleteTeam={handleDeleteCustomTeam}
+            />
+          ) : (
+            <ProfileSection
+              synth={selectedEmployee}
+              teamMember={selectedTeamMember}
+              onAddToTeam={handleAddToThread}
+              onUpdateProfile={handleUpdateProfile}
+              onDeleteSynth={handleDeleteSynth}
+              allSynths={customSynths}
+              isCollapsed={isProfileCollapsed}
+              onToggleCollapse={() => {
+                setIsProfileCollapsed(true);
+                setSelectedEmployee(null);
+                setSelectedTeamMember(null);
+              }}
+            />
+          )}
+          </div>
+        </div>
+      )}
+      <div className={`min-h-0 ${showSidebarDetails ? 'hidden' : 'flex-1'}`}>
+        <BrowserPanel
+          customSynths={customSynths}
+          publicSynths={publicSynths.map(synth => ({
+            id: synth.id,
+            ...synth.synth_data
+          }))}
+          onSelectEmployee={handleSelectEmployee}
+          onQuickAdd={handleAddToThread}
+          onQuickAddTeam={handleQuickAddToThread}
+          onSelectTeam={handleSelectCustomTeam}
+          onSelectCustomTeam={handleSelectCustomTeam}
+          onAddNewTeam={handleAddNewTeam}
+          onAddNewSynth={handleAddNewSynth}
+          onEditSynth={(synth: AIEmployee) => {
+            // This is called from the edit modal, so we don't have updates yet
+            // The actual editing happens in the ProfileSection
+            handleSelectEmployee(synth);
+          }}
+          onDeleteSynth={handleDeleteSynth}
+          customTeams={customTeams}
+          publicTeams={publicTeams.map(team => ({
+            id: team.id,
+            name: team.team_data.name,
+            description: team.team_data.description,
+            teamImage: team.team_data.teamImage,
+            isPublic: true,
+            selectedSynths: teamSynthsMap[team.id]?.map(teamSynth => {
+              const synthRef = teamSynth.synth_reference;
+              const actualSynthData = synthRef.metadata?.actualSynthData;
+              
+              // Use actual synth data if available, otherwise fall back to metadata
+              if (actualSynthData) {
+                return {
+                  id: synthRef.synthId,
+                  name: actualSynthData.name || 'Unknown',
+                  role: actualSynthData.role || 'Unknown',
+                  age: actualSynthData.age || 30,
+                  profileImage: actualSynthData.profileImage || '/default-avatar.png',
+                  bio: actualSynthData.bio || 'Team member',
+                  experience: actualSynthData.experience || ['Professional'],
+                  systemPrompt: synthRef.metadata?.systemPrompt || actualSynthData.systemPrompt || '',
+                  baseModel: (synthRef.metadata?.model || actualSynthData.baseModel || DEFAULT_MODEL_ID) as AIEmployee['baseModel']
+                } as AIEmployee;
+              } else {
+                return {
+                  id: synthRef.synthId,
+                  name: synthRef.metadata?.name || 'Unknown',
+                  role: synthRef.metadata?.role || 'Unknown',
+                  age: 30,
+                  profileImage: synthRef.metadata?.profileImage || '/default-avatar.png',
+                  bio: 'Team member',
+                  experience: ['Professional'],
+                  systemPrompt: synthRef.metadata?.systemPrompt || '',
+                  baseModel: (synthRef.metadata?.model || DEFAULT_MODEL_ID) as AIEmployee['baseModel']
+                } as AIEmployee;
+              }
+            }) || []
+          }))}
+          brandControls={
+            <SidebarBrandControls
+              isBrowserCollapsed={isBrowserCollapsed}
+              onToggleBrowser={() => setIsBrowserCollapsed(!isBrowserCollapsed)}
+            />
+          }
+        />
+      </div>
+      <SidebarAccountFooter isLoadingData={isLoadingData} />
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-screen">
-      <Header 
-        isBrowserCollapsed={isBrowserCollapsed}
-        onToggleBrowser={() => setIsBrowserCollapsed(!isBrowserCollapsed)}
-        isLoadingData={isLoadingData}
-      />
-      
-      <div className="flex flex-1 overflow-hidden">
-        {!isBrowserCollapsed && (
-          <div className="w-[30%] flex-shrink-0 h-full min-h-0 flex flex-col">
-            {showSidebarDetails && (
-              <div className="flex-1 min-h-0 bg-white dark:bg-neutral-900 max-md:fixed max-md:inset-0 max-md:z-50">
-                {selectedPremadeTeam ? (
-                  <TeamProfile
-                    team={{
-                      id: selectedPremadeTeam.id,
-                      name: selectedPremadeTeam.team_data.name,
-                      selectedSynths: [], // COAITeam doesn't have selectedSynths, would need to fetch from team-synths
-                      createdAt: new Date(selectedPremadeTeam.created_at),
-                      description: selectedPremadeTeam.team_data.description,
-                      teamImage: selectedPremadeTeam.team_data.teamImage
-                    }}
-                    onBack={() => {
-                      setIsProfileCollapsed(true);
-                      setSelectedPremadeTeam(null);
-                    }}
-                    onAddTeam={handleQuickAddToThread}
-                    onSelectEmployee={handleSelectEmployee}
-                  />
-                ) : isEditTeamModalOpen && teamToEdit ? (
-                  <EditTeamModal
-                    isOpen={isEditTeamModalOpen}
-                    onClose={handleCloseEditTeamModal}
-                    onSave={handleSaveEditedTeam}
-                    availableSynths={customSynths}
-                    customSynths={customSynths}
-                    team={teamToEdit}
-                  />
-                ) : selectedCustomTeam ? (
-                  <CustomTeamProfile
-                    team={selectedCustomTeam}
-                    onBack={() => {
-                      setIsProfileCollapsed(true);
-                      setSelectedCustomTeam(null);
-                    }}
-                    onAddTeam={handleQuickAddToThread}
-                    onSelectEmployee={handleSelectEmployee}
-                    onEditTeam={handleEditCustomTeam}
-                    onDeleteTeam={handleDeleteCustomTeam}
-                  />
-                ) : (
-                  <ProfileSection
-                    synth={selectedEmployee}
-                    teamMember={selectedTeamMember}
-                    onAddToTeam={handleAddToThread}
-                    onUpdateProfile={handleUpdateProfile}
-                    onDeleteSynth={handleDeleteSynth}
-                    allSynths={customSynths}
-                    isCollapsed={isProfileCollapsed}
-                    onToggleCollapse={() => {
-                      setIsProfileCollapsed(true);
-                      setSelectedEmployee(null);
-                      setSelectedTeamMember(null);
-                    }}
-                  />
-                )}
-              </div>
-            )}
-            <div className={`min-h-0 ${showSidebarDetails ? 'hidden' : 'flex-1'}`}>
-            <BrowserPanel
-              customSynths={customSynths}
-              publicSynths={publicSynths.map(synth => ({
-                id: synth.id,
-                ...synth.synth_data
-              }))}
-              onSelectEmployee={handleSelectEmployee}
-              onQuickAdd={handleAddToThread}
-              onQuickAddTeam={handleQuickAddToThread}
-              onSelectTeam={handleSelectCustomTeam}
-              onSelectCustomTeam={handleSelectCustomTeam}
-              onAddNewTeam={handleAddNewTeam}
-              onAddNewSynth={handleAddNewSynth}
-              onEditSynth={(synth: AIEmployee) => {
-                // This is called from the edit modal, so we don't have updates yet
-                // The actual editing happens in the ProfileSection
-                handleSelectEmployee(synth);
-              }}
-              onDeleteSynth={handleDeleteSynth}
-              customTeams={customTeams}
-              publicTeams={publicTeams.map(team => ({
-                id: team.id,
-                name: team.team_data.name,
-                description: team.team_data.description,
-                teamImage: team.team_data.teamImage,
-                isPublic: true,
-                selectedSynths: teamSynthsMap[team.id]?.map(teamSynth => {
-                  const synthRef = teamSynth.synth_reference;
-                  const actualSynthData = synthRef.metadata?.actualSynthData;
-                  
-                  // Use actual synth data if available, otherwise fall back to metadata
-                  if (actualSynthData) {
-                    return {
-                      id: synthRef.synthId,
-                      name: actualSynthData.name || 'Unknown',
-                      role: actualSynthData.role || 'Unknown',
-                      age: actualSynthData.age || 30,
-                      profileImage: actualSynthData.profileImage || '/default-avatar.png',
-                      bio: actualSynthData.bio || 'Team member',
-                      experience: actualSynthData.experience || ['Professional'],
-                      systemPrompt: synthRef.metadata?.systemPrompt || actualSynthData.systemPrompt || '',
-                      baseModel: (synthRef.metadata?.model || actualSynthData.baseModel || DEFAULT_MODEL_ID) as AIEmployee['baseModel']
-                    } as AIEmployee;
-                  } else {
-                    return {
-                      id: synthRef.synthId,
-                      name: synthRef.metadata?.name || 'Unknown',
-                      role: synthRef.metadata?.role || 'Unknown',
-                      age: 30,
-                      profileImage: synthRef.metadata?.profileImage || '/default-avatar.png',
-                      bio: 'Team member',
-                      experience: ['Professional'],
-                      systemPrompt: synthRef.metadata?.systemPrompt || '',
-                      baseModel: (synthRef.metadata?.model || DEFAULT_MODEL_ID) as AIEmployee['baseModel']
-                    } as AIEmployee;
-                  }
-                }) || []
-              }))}
-            />
-            </div>
-          </div>
-        )}
-        
-        <div className="flex-1 min-w-0">
-          <ChatSection
-            teamMembers={teamMembers}
-            onRemoveTeamMember={handleRemoveTeamMember}
-            onAddTeamMember={handleAddToThread}
-            onAddTeam={handleQuickAddToThread}
-            onSelectTeamMember={handleSelectTeamMember}
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            onAIContinue={handleAIContinue}
-            onRemoveMessage={handleRemoveMessage}
-            onUpdateSynthModel={handleUpdateSynthModel}
-            employees={customSynths}
-            threads={teams}
-            activeThreadId={activeThreadId}
-            onSelectThread={handleSelectTeam}
-            onEditThreadName={handleEditTeamName}
-            onCreateChat={handleCreateNewChat}
-            onDeleteThread={handleDeleteTeam}
-            onClearChat={handleClearChat}
-            isWaitingForStream={isWaitingForStream}
-            globalSpacebarCount={globalSpacebarCount}
+      {isBrowserCollapsed ? (
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          <CollapsedSidebarRail
+            onToggleBrowser={() => setIsBrowserCollapsed(false)}
+            isLoadingData={isLoadingData}
           />
+          <div className="flex-1 min-w-0 overflow-hidden">
+            {chatSection}
+          </div>
         </div>
-      </div>
+      ) : (
+        <ResizablePanelGroup
+          direction="horizontal"
+          autoSaveId="coai-browser-layout"
+          className="h-auto min-h-0 flex-1 overflow-hidden"
+        >
+          <ResizablePanel
+            id="browser"
+            defaultSize={30}
+            minSize={14}
+            maxSize={48}
+            className="min-h-0"
+          >
+            {browserPane}
+          </ResizablePanel>
+          <ResizableHandle className="w-px bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-400 dark:hover:bg-neutral-500 transition-colors" />
+          <ResizablePanel id="chat" defaultSize={70} minSize={40} className="min-h-0 min-w-0">
+            {chatSection}
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      )}
     </div>
   );
 };

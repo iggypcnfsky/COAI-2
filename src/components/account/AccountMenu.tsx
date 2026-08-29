@@ -11,12 +11,13 @@ function BillingIcon() {
   return <CreditCard className="h-4 w-4" />;
 }
 
-export function AccountMenu() {
+export function AccountMenu({ compact = false }: { compact?: boolean }) {
+  const size = compact ? '1.75rem' : '2rem';
   return (
     <UserButton
       appearance={{
         elements: {
-          avatarBox: { width: '2rem', height: '2rem' },
+          avatarBox: { width: size, height: size },
         },
       }}
     >

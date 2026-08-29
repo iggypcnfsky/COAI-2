@@ -31,6 +31,7 @@ interface BrowserPanelProps {
   onAddNewTeam: (team: CustomTeam) => void;
   customTeams: CustomTeam[];
   publicTeams?: CustomTeam[];
+  brandControls?: React.ReactNode;
 }
 
 const BrowserPanel: React.FC<BrowserPanelProps> = ({
@@ -46,11 +47,12 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
   onAddNewTeam,
   customTeams = [],
   publicTeams = [],
+  brandControls,
 }) => {
   // Get auth state from the legacy context (which now uses Zustand)
   const { user } = useAuth();
   
-  const [activeTab, setActiveTab] = useState('teams');
+  const [activeTab, setActiveTab] = useState('synths');
   const [isCreateSynthModalOpen, setIsCreateSynthModalOpen] = useState(false);
   const [isEditSynthModalOpen, setIsEditSynthModalOpen] = useState(false);
   const [isCreateTeamModalOpen, setIsCreateTeamModalOpen] = useState(false);
@@ -419,37 +421,56 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800">
+    <div className="sidebar-pane h-full flex flex-col bg-white dark:bg-neutral-900">
       {isCreateSynthModalOpen ? (
-        <CreateSynthModal
-          isOpen={isCreateSynthModalOpen}
-          onClose={() => setIsCreateSynthModalOpen(false)}
-          onSave={handleSaveSynth}
-          onGenerationStart={handleGenerationStart}
-        />
+        <>
+          {brandControls ? (
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
+              {brandControls}
+            </div>
+          ) : null}
+          <div className="flex-1 min-h-0">
+            <CreateSynthModal
+              isOpen={isCreateSynthModalOpen}
+              onClose={() => setIsCreateSynthModalOpen(false)}
+              onSave={handleSaveSynth}
+              onGenerationStart={handleGenerationStart}
+            />
+          </div>
+        </>
       ) : isCreateTeamModalOpen ? (
-        <CreateTeamModal
-          isOpen={isCreateTeamModalOpen}
-          onClose={() => setIsCreateTeamModalOpen(false)}
-          onSave={handleSaveTeam}
-          availableSynths={[]}
-          customSynths={customSynths}
-          onTeamGenerationStart={handleTeamGenerationStart}
-        />
+        <>
+          {brandControls ? (
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
+              {brandControls}
+            </div>
+          ) : null}
+          <div className="flex-1 min-h-0">
+            <CreateTeamModal
+              isOpen={isCreateTeamModalOpen}
+              onClose={() => setIsCreateTeamModalOpen(false)}
+              onSave={handleSaveTeam}
+              availableSynths={[]}
+              customSynths={customSynths}
+              onTeamGenerationStart={handleTeamGenerationStart}
+            />
+          </div>
+        </>
       ) : (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
         {/* Tab Navigation */}
         <div className="border-b border-neutral-200 dark:border-neutral-800">
           <div className="p-3">
             <div className="flex items-center gap-2">
-              <TabsList className="grid grid-cols-2 flex-1 rounded-full">
-                <TabsTrigger value="teams" className="flex items-center gap-2 rounded-full">
-                  <Users className="h-4 w-4" />
-                  <span className="hidden sm:inline">Groups</span>
-                </TabsTrigger>
-                <TabsTrigger value="synths" className="flex items-center gap-2 rounded-full">
+              {brandControls}
+              <TabsList className="grid grid-cols-2 flex-1 min-w-0 rounded-full">
+                <TabsTrigger value="synths" className="sidebar-tab-trigger flex items-center gap-2 rounded-full" title="Synths">
                   <Bot className="h-4 w-4" />
-                  <span className="hidden sm:inline">Synths</span>
+                  <span className="sidebar-tab-label">Synths</span>
+                </TabsTrigger>
+                <TabsTrigger value="teams" className="sidebar-tab-trigger flex items-center gap-2 rounded-full" title="Groups">
+                  <Users className="h-4 w-4" />
+                  <span className="sidebar-tab-label">Groups</span>
                 </TabsTrigger>
               </TabsList>
               <Button
@@ -457,9 +478,10 @@ const BrowserPanel: React.FC<BrowserPanelProps> = ({
                 variant="outline"
                 className="flex items-center gap-2 shrink-0 rounded-full"
                 onClick={activeTab === 'teams' ? handleCreateTeam : handleCreateSynth}
+                title={activeTab === 'teams' ? 'Create group' : 'Create synth'}
               >
                 <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">
+                <span className="sidebar-tab-label">
                   {activeTab === 'teams' ? 'Create group' : 'Create synth'}
                 </span>
               </Button>

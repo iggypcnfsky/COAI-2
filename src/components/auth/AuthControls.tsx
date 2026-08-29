@@ -45,7 +45,11 @@ export function MarketingHeader({ showContinue = false }: { showContinue?: boole
           size="24px"
           color="#6b7280"
           className="md:w-8 md:h-8"
+          alt="Corals"
         />
+        <span className="ml-2 text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+          Corals
+        </span>
         <span className="inline-flex items-center px-2 py-1 ml-2 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 text-xs font-medium">
           beta
         </span>

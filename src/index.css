@@ -145,3 +145,20 @@ body {
     height: 4px;
   }
 }
+
+.sidebar-pane {
+  container-type: inline-size;
+  container-name: sidebar;
+}
+
+@container sidebar (max-width: 23rem) {
+  .sidebar-tab-label {
+    display: none;
+  }
+
+  .sidebar-tab-trigger {
+    gap: 0;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+}

@@ -101,7 +101,7 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
                   size="sm"
                   variant="outline"
                   onClick={onCreateChat}
-                  className="h-7 px-2 text-xs"
+                  className="h-7 rounded-full px-2 text-xs"
                 >
                   <Plus className="h-3 w-3 md:mr-1" />
                   <span className="hidden md:inline">Create Chat</span>
@@ -111,7 +111,7 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
                     size="sm"
                     variant="outline"
                     onClick={onClearChat}
-                    className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
+                    className="h-7 rounded-full px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
                   >
                     <Trash2 className="h-3 w-3 md:mr-1" />
                     <span className="hidden md:inline">Clear Chat</span>
@@ -183,7 +183,7 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
                 size="sm"
                 variant="outline"
                 onClick={onCreateChat}
-                className="h-7 px-2 text-xs"
+                className="h-7 rounded-full px-2 text-xs"
               >
                 <Plus className="h-3 w-3 md:mr-1" />
                 <span className="hidden md:inline">Create Chat</span>
@@ -193,7 +193,7 @@ const YourChatsSection: React.FC<YourChatsSectionProps> = ({
                   size="sm"
                   variant="outline"
                   onClick={onClearChat}
-                  className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
+                  className="h-7 rounded-full px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
                 >
                   <Trash2 className="h-3 w-3 md:mr-1" />
                   <span className="hidden md:inline">Clear Chat</span>
